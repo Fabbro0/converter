@@ -13,7 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.megaconverter.app.converter.ConversionEngine
-import com.megaconverter.app.ui.ConverterScreen
+import com.megaconverter.app.ui.ConverterAppRoot
 import com.megaconverter.app.ui.theme.MegaConverterTheme
 
 class MainActivity : ComponentActivity() {
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MegaConverterTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    ConverterScreen(engine = engine, initialUri = initialUri)
+                    ConverterAppRoot(engine = engine, initialUri = initialUri)
                 }
             }
         }

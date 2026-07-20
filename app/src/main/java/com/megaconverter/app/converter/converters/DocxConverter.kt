@@ -1,21 +1,13 @@
 package com.megaconverter.app.converter.converters
 
 import android.content.Context
-import android.util.Xml
 import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileConverter
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.util.FileUtils
-import org.xmlpull.v1.XmlPullParser
-import java.io.File
-import java.util.zip.ZipFile
 
-/**
- * DOCX -> TXT / PDF. A .docx is a zip archive with the document body as
- * word/document.xml; a minimal namespace-aware pull-parser walk extracts the
- * paragraph text runs (<w:t>) without pulling in a heavyweight OOXML library.
- */
+/** DOCX -> TXT / PDF, using DocxReader for the actual text extraction. */
 class DocxConverter : FileConverter {
 
     override fun canConvert(from: FileFormat, to: FileFormat): Boolean =
@@ -32,7 +24,7 @@ class DocxConverter : FileConverter {
     ): ConversionResult {
         onProgress(0.1f)
         val text = try {
-            extractText(input.sourceFile)
+            DocxReader.extractText(input.sourceFile)
         } catch (e: Exception) {
             return ConversionResult.Failure("Impossibile leggere il file DOCX: ${e.message}", e)
         }
@@ -54,40 +46,5 @@ class DocxConverter : FileConverter {
             }
             else -> ConversionResult.Failure("Formato di destinazione non supportato per DOCX")
         }
-    }
-
-    private fun extractText(file: File): String {
-        val zip = ZipFile(file)
-        val entry = zip.getEntry("word/document.xml") ?: run {
-            zip.close()
-            return ""
-        }
-        val text = zip.getInputStream(entry).use { input ->
-            val parser = Xml.newPullParser()
-            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
-            parser.setInput(input, "UTF-8")
-
-            val sb = StringBuilder()
-            var inTextRun = false
-            var eventType = parser.eventType
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                when (eventType) {
-                    XmlPullParser.START_TAG -> when (parser.name) {
-                        "t" -> inTextRun = true
-                        "br" -> sb.append('\n')
-                        "tab" -> sb.append('\t')
-                    }
-                    XmlPullParser.TEXT -> if (inTextRun) sb.append(parser.text)
-                    XmlPullParser.END_TAG -> when (parser.name) {
-                        "t" -> inTextRun = false
-                        "p" -> sb.append('\n')
-                    }
-                }
-                eventType = parser.next()
-            }
-            sb.toString()
-        }
-        zip.close()
-        return text
     }
 }

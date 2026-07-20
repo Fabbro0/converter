@@ -28,6 +28,33 @@ coppie di formati in futuro senza toccare il resto dell'app: basta implementare
   formati diversi nella stessa selezione non sono supportati: l'app te lo segnala
   chiaramente invece di indovinare cosa fare.
 
+## Lettore integrato e libreria con etichette
+
+Icona/pulsante **"LIBRERIA"** in alto a destra nell'app. Da qualunque conversione
+riuscita, il pulsante **"SALVA IN LIBRERIA"** copia il file in uno spazio permanente
+dell'app (non nella cache, che il sistema può svuotare in qualsiasi momento) e lo
+aggiunge alla libreria.
+
+Nella libreria: elenco dei file salvati, filtro per etichetta (chip in alto), e per
+ogni file "ETICHETTE" (dialogo con etichette separate da virgola, libere) ed "ELIMINA".
+Toccando un file si apre nel lettore integrato:
+
+- **PDF** → pager pagina per pagina (scorrimento orizzontale), renderizzato al volo con
+  `PdfRenderer` (nessun caricamento di tutte le pagine in memoria insieme).
+- **EPUB / DOCX / TXT** → testo estratto e scorrevole (stessi estrattori usati per le
+  conversioni: `EpubReader`, `DocxReader`).
+- **Immagini** → visualizzatore a schermo intero (adattato, senza zoom/pinch per ora).
+- **Audio/video/altro** → l'app non prova a "leggerli": mostra un pulsante per aprirli
+  con un'altra app installata sul telefono.
+
+Nessuna dipendenza nuova per la libreria: l'indice è un semplice file JSON in
+`context.filesDir` (letto/scritto con `org.json`, incluso in Android), non un database
+Room — per una lista personale su un solo dispositivo è più che sufficiente, ed evita
+di introdurre un plugin di annotation-processing (KSP) che non potevo verificare
+compilando qui. La navigazione tra le tre schermate (Convertitore/Libreria/Lettore) è
+gestita a mano in `ConverterAppRoot.kt`, incluso il tasto Indietro di sistema — niente
+Navigation-Compose, che sarebbe overkill per tre schermate in sequenza lineare.
+
 ## Come aprire/compilare il progetto
 
 1. Apri la cartella con Android Studio (Koala o più recente).
@@ -83,9 +110,9 @@ versioni), sono localizzati e facili da correggere.
 
 ## Limiti noti / possibili estensioni future
 
-Già implementato in questa sessione: EPUB, unione PDF, conversione batch generica.
-Restano fuori scope per ora (richiederebbero librerie pesanti, servizi esterni, o più
-tempo di sviluppo/verifica):
+Già implementato: EPUB, unione PDF, conversione batch generica, lettore integrato,
+libreria con etichette. Restano fuori scope per ora (richiederebbero librerie pesanti,
+servizi esterni, o più tempo di sviluppo/verifica):
 
 - **DOCX** è supportato solo in lettura (→ TXT/PDF), non in scrittura (TXT/PDF → DOCX).
 - **CSV ⇄ XLSX**: fogli di calcolo, non ancora implementato.
@@ -99,9 +126,13 @@ tempo di sviluppo/verifica):
 - **Job lunghi in background**: le conversioni audio/video girano finché l'app resta
   in foreground; su video molto lunghi converrebbe spostarle su `WorkManager` con
   notifica persistente così sopravvivono anche se l'utente esce dall'app.
-- **Cronologia conversioni**, **strumenti PDF avanzati** (dividi, ruota, comprimi,
-  filigrana, password), **lettore integrato** per aprire i file convertiti senza
-  uscire dall'app: tutte cose valide, da valutare in un prossimo giro.
+- **Strumenti PDF avanzati** (dividi, ruota, comprimi, filigrana, password): non inclusi.
+- **Lettore**: niente zoom/pinch sulle immagini, niente indice dei capitoli per EPUB
+  (mostra tutto il testo in sequenza), niente evidenziazione/segnalibri.
+- **Aggregatore di sorgenti esterne** (tipo Mihon, per scaricare contenuti da siti web):
+  intenzionalmente non implementato — la maggior parte delle estensioni di quel tipo di
+  app punta a fonti non ufficiali/senza licenza. Se servono fonti legali specifiche
+  (es. Project Gutenberg, API ufficiali) è un discorso diverso, da valutare caso per caso.
 - L'icona dell'app (`res/drawable/ic_launcher_*.xml`, `res/mipmap*/ic_launcher*`) è un
   semplice placeholder vettoriale; consigliato rigenerarla con l'Image Asset Studio
   di Android Studio prima della pubblicazione.

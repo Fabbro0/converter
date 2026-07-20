@@ -65,6 +65,7 @@ import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.converter.converters.MultiImageToPdf
 import com.megaconverter.app.converter.converters.PdfMerge
+import com.megaconverter.app.library.LibraryStore
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -75,7 +76,7 @@ import java.util.zip.ZipOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
+fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -239,7 +240,10 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("MEGA CONVERTER") })
+            TopAppBar(
+                title = { Text("MEGA CONVERTER") },
+                actions = { TextButton(onClick = onOpenLibrary) { Text("LIBRERIA") } },
+            )
         },
     ) { padding ->
         Box(
@@ -586,6 +590,10 @@ private fun SuccessContent(
     onSaveAs: () -> Unit,
     onConvertAnother: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var savedToLibrary by remember(state) { mutableStateOf(false) }
+
     Spacer(Modifier.height(48.dp))
     Icon(
         imageVector = Icons.Filled.CheckCircle,
@@ -618,6 +626,20 @@ private fun SuccessContent(
     }
     Spacer(Modifier.height(12.dp))
     OutlinedButton(onClick = onSaveAs) { Text("SALVA CON NOME…") }
+    Spacer(Modifier.height(12.dp))
+    OutlinedButton(
+        onClick = {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    LibraryStore.addItem(context, state.outputFile, state.outputFile.name, state.outputFormat)
+                }
+                savedToLibrary = true
+            }
+        },
+        enabled = !savedToLibrary,
+    ) {
+        Text(if (savedToLibrary) "SALVATO IN LIBRERIA ✓" else "SALVA IN LIBRERIA")
+    }
     Spacer(Modifier.height(20.dp))
     Button(onClick = onConvertAnother) { Text("CONVERTI UN ALTRO FILE") }
 }
