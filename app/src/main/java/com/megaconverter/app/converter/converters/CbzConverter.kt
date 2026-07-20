@@ -17,7 +17,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
-private val CBZ_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "bmp")
+/** Recognized comic-page image extensions inside a .cbz. Includes decode-only formats
+ * (heic/gif) since a CBZ page is just stored raw, never re-encoded — see
+ * MultiImageToCbz.imageToCbz, which copies source bytes as-is. */
+val CBZ_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "gif")
 
 /** CBZ (comic book zip) is just an ordered zip of page images. CBZ<->PDF and
  * image(s)->CBZ reuse the same page-rendering logic as PdfMerge/ImagePdfConverter. */

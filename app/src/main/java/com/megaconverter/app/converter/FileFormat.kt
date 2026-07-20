@@ -3,6 +3,7 @@ package com.megaconverter.app.converter
 enum class FormatCategory(val label: String) {
     IMAGE("Immagine"),
     DOCUMENT("Documento"),
+    SPREADSHEET("Foglio di calcolo"),
     AUDIO("Audio"),
     VIDEO("Video"),
 }
@@ -12,11 +13,16 @@ enum class FileFormat(
     val mimeType: String,
     val category: FormatCategory,
 ) {
-    // Images
+    // Images (encodable)
     JPG("jpg", "image/jpeg", FormatCategory.IMAGE),
     PNG("png", "image/png", FormatCategory.IMAGE),
     WEBP("webp", "image/webp", FormatCategory.IMAGE),
     BMP("bmp", "image/bmp", FormatCategory.IMAGE),
+
+    // Images (Android can decode these but has no public encoder for them, so they can
+    // only ever be a conversion *source*; see ImageToImageConverter.DECODE_ONLY_FORMATS)
+    HEIC("heic", "image/heic", FormatCategory.IMAGE),
+    GIF("gif", "image/gif", FormatCategory.IMAGE),
 
     // Documents
     TXT("txt", "text/plain", FormatCategory.DOCUMENT),
@@ -28,6 +34,17 @@ enum class FileFormat(
     ),
     EPUB("epub", "application/epub+zip", FormatCategory.DOCUMENT),
     CBZ("cbz", "application/vnd.comicbook+zip", FormatCategory.DOCUMENT),
+    MD("md", "text/markdown", FormatCategory.DOCUMENT),
+    HTML("html", "text/html", FormatCategory.DOCUMENT),
+    RTF("rtf", "application/rtf", FormatCategory.DOCUMENT),
+
+    // Spreadsheets
+    CSV("csv", "text/csv", FormatCategory.SPREADSHEET),
+    XLSX(
+        "xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        FormatCategory.SPREADSHEET,
+    ),
 
     // Audio
     MP3("mp3", "audio/mpeg", FormatCategory.AUDIO),
@@ -48,11 +65,14 @@ enum class FileFormat(
     companion object {
         fun fromExtension(extension: String): FileFormat? {
             val normalized = extension.trim().trimStart('.').lowercase()
+            if (normalized == "jpeg") return JPG
+            if (normalized == "htm") return HTML
             return entries.firstOrNull { it.extension == normalized }
         }
 
         fun fromMimeType(mimeType: String?): FileFormat? {
             if (mimeType.isNullOrBlank()) return null
+            if (mimeType.equals("image/jpg", ignoreCase = true)) return JPG
             return entries.firstOrNull { it.mimeType.equals(mimeType, ignoreCase = true) }
         }
     }

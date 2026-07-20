@@ -5,8 +5,12 @@ import com.megaconverter.app.converter.converters.AudioVideoConverter
 import com.megaconverter.app.converter.converters.CbzConverter
 import com.megaconverter.app.converter.converters.DocxConverter
 import com.megaconverter.app.converter.converters.EpubConverter
+import com.megaconverter.app.converter.converters.HtmlConverter
 import com.megaconverter.app.converter.converters.ImagePdfConverter
 import com.megaconverter.app.converter.converters.ImageToImageConverter
+import com.megaconverter.app.converter.converters.MarkdownConverter
+import com.megaconverter.app.converter.converters.RtfConverter
+import com.megaconverter.app.converter.converters.SpreadsheetConverter
 import com.megaconverter.app.converter.converters.TextPdfConverter
 
 class ConversionEngine(private val converters: List<FileConverter>) {
@@ -47,6 +51,10 @@ class ConversionEngine(private val converters: List<FileConverter>) {
                 DocxConverter(),
                 EpubConverter(),
                 CbzConverter(),
+                MarkdownConverter(),
+                HtmlConverter(),
+                RtfConverter(),
+                SpreadsheetConverter(),
                 AudioVideoConverter(),
             ),
         )

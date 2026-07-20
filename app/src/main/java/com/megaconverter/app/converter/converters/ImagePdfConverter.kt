@@ -20,15 +20,18 @@ import java.util.zip.ZipOutputStream
 /** Image -> PDF (one page) and PDF -> image (one file per page, zipped if there's more than one). */
 class ImagePdfConverter : FileConverter {
 
-    private val imageFormats = FileFormat.entries.filter { it.category == FormatCategory.IMAGE }.toSet()
+    // HEIC/GIF can be a PDF *source* (Android decodes them) but never a PDF->image
+    // *target* (no public encoder for either) — see ImageToImageConverter for the same
+    // distinction.
+    private val encodableImageFormats = setOf(FileFormat.JPG, FileFormat.PNG, FileFormat.WEBP, FileFormat.BMP)
 
     override fun canConvert(from: FileFormat, to: FileFormat): Boolean =
         (from.category == FormatCategory.IMAGE && to == FileFormat.PDF) ||
-            (from == FileFormat.PDF && to.category == FormatCategory.IMAGE)
+            (from == FileFormat.PDF && to in encodableImageFormats)
 
     override fun possibleOutputs(from: FileFormat): Set<FileFormat> = when {
         from.category == FormatCategory.IMAGE -> setOf(FileFormat.PDF)
-        from == FileFormat.PDF -> imageFormats
+        from == FileFormat.PDF -> encodableImageFormats
         else -> emptySet()
     }
 

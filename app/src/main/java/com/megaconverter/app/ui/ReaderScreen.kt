@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.converter.FormatCategory
+import com.megaconverter.app.converter.converters.CBZ_IMAGE_EXTENSIONS
 import com.megaconverter.app.converter.converters.DocxReader
 import com.megaconverter.app.converter.converters.EpubReader
 import com.megaconverter.app.converter.converters.NaturalSort
@@ -198,8 +199,6 @@ private fun PdfPageImage(file: File, pageIndex: Int) {
         }
     }
 }
-
-private val CBZ_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "bmp")
 
 @Composable
 private fun CbzReaderContent(file: File) {

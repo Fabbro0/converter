@@ -11,13 +11,21 @@ import com.megaconverter.app.util.FileUtils
 
 class ImageToImageConverter : FileConverter {
 
-    private val imageFormats = FileFormat.entries.filter { it.category == FormatCategory.IMAGE }.toSet()
+    /** Formats Android's BitmapFactory can both decode and re-encode. */
+    private val encodableFormats = setOf(FileFormat.JPG, FileFormat.PNG, FileFormat.WEBP, FileFormat.BMP)
+
+    /** Android decodes these (HEIC since API 28, GIF as its first frame) but has no
+     * public encoder for either, so they can only ever be a conversion source. */
+    private val decodeOnlyFormats = setOf(FileFormat.HEIC, FileFormat.GIF)
 
     override fun canConvert(from: FileFormat, to: FileFormat): Boolean =
-        from.category == FormatCategory.IMAGE && to.category == FormatCategory.IMAGE && from != to
+        isReadableSource(from) && to in encodableFormats && from != to
 
     override fun possibleOutputs(from: FileFormat): Set<FileFormat> =
-        if (from.category == FormatCategory.IMAGE) imageFormats - from else emptySet()
+        if (isReadableSource(from)) encodableFormats - from else emptySet()
+
+    private fun isReadableSource(format: FileFormat): Boolean =
+        format in encodableFormats || format in decodeOnlyFormats
 
     override suspend fun convert(
         context: Context,
