@@ -74,4 +74,15 @@ dependencies {
     // the original com.arthenica ffmpeg-kit was pulled from Maven Central in 2025;
     // same com.arthenica.ffmpegkit API surface, so swap the coordinate only if this fork ever disappears)
     implementation(libs.ffmpeg.kit)
+
+    // OCR. Bundled (not the Play-Services-backed play-services-mlkit-text-recognition
+    // variant): the recognition model ships inside the APK, so it works fully offline
+    // from the first run with no download step.
+    implementation(libs.mlkit.text.recognition)
+
+    // Document camera scanner (edge detection, perspective correction, multi-page ->
+    // PDF), Google's own component — same one Drive/Docs use. This one IS Play
+    // Services-backed (dynamically delivered, not bundled in the APK), so it requires
+    // Google Play Services on the device and a brief first-use download.
+    implementation(libs.mlkit.document.scanner)
 }

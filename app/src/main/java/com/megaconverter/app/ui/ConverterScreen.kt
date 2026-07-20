@@ -1,10 +1,13 @@
 package com.megaconverter.app.ui
 
+import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -59,12 +62,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.megaconverter.app.converter.ConversionEngine
 import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
+import com.megaconverter.app.converter.FormatCategory
 import com.megaconverter.app.converter.converters.MultiImageToCbz
 import com.megaconverter.app.converter.converters.MultiImageToPdf
+import com.megaconverter.app.converter.converters.OcrTool
 import com.megaconverter.app.converter.converters.PdfMerge
 import com.megaconverter.app.library.LibraryStore
 import com.megaconverter.app.util.FileUtils
@@ -188,6 +196,82 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
         }
     }
 
+    val ocrPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("OCR IN CORSO…", "Riconoscimento del testo…")
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val displayName = FileUtils.displayNameFromUri(context, uri)
+                        val format = FileUtils.detectFormat(context, uri, displayName)
+                        if (format == null || (format.category != FormatCategory.IMAGE && format != FileFormat.PDF)) {
+                            ConversionResult.Failure("L'OCR funziona solo su immagini o PDF")
+                        } else {
+                            val file = FileUtils.copyToCache(context, uri, displayName)
+                            val outputFile = OcrTool.recognizeToTextFile(context, file, format, displayName) { p ->
+                                mainHandler.post { progress = p }
+                            }
+                            ConversionResult.Success(outputFile, FileFormat.TXT)
+                        }
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante l'OCR")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    val scannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { activityResult ->
+        if (activityResult.resultCode == Activity.RESULT_OK) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(activityResult.data)
+            val pdfUri = scanResult?.pdf?.uri
+            if (pdfUri != null) {
+                scope.launch {
+                    val outputFile = withContext(Dispatchers.IO) {
+                        val dest = FileUtils.newOutputFile(context, "documento_scansionato", FileFormat.PDF)
+                        context.contentResolver.openInputStream(pdfUri)?.use { input ->
+                            dest.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        dest
+                    }
+                    uiState = UiState.Success(null, outputFile, FileFormat.PDF)
+                }
+            } else {
+                uiState = UiState.Error("Scansione non riuscita: nessun PDF prodotto")
+            }
+        }
+    }
+
+    fun startDocumentScan() {
+        val activity = context as? ComponentActivity
+        if (activity == null) {
+            uiState = UiState.Error("Impossibile avviare lo scanner")
+            return
+        }
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        GmsDocumentScanning.getClient(options)
+            .getStartScanIntent(activity)
+            .addOnSuccessListener { intentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener { e ->
+                uiState = UiState.Error(
+                    e.message ?: "Impossibile avviare lo scanner (richiede Google Play Services aggiornato)",
+                )
+            }
+    }
+
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { destUri ->
         val current = uiState
         if (destUri != null && current is UiState.Success) {
@@ -296,6 +380,8 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                         onPickMultiImagesToCbz = { multiImageToCbzPickerLauncher.launch(arrayOf("image/*")) },
                         onPickMultiPdf = { multiPdfPickerLauncher.launch(arrayOf("application/pdf")) },
                         onPickBatch = { batchPickerLauncher.launch(arrayOf("*/*")) },
+                        onPickOcr = { ocrPickerLauncher.launch(arrayOf("image/*", "application/pdf")) },
+                        onScanDocument = { startDocumentScan() },
                     )
                     is UiState.FileSelected -> FileSelectedContent(
                         state = state,
@@ -386,6 +472,8 @@ private fun IdleContent(
     onPickMultiImagesToCbz: () -> Unit,
     onPickMultiPdf: () -> Unit,
     onPickBatch: () -> Unit,
+    onPickOcr: () -> Unit,
+    onScanDocument: () -> Unit,
 ) {
     Spacer(Modifier.height(40.dp))
     Icon(
@@ -421,6 +509,20 @@ private fun IdleContent(
             Text("STRUMENTI ⌄")
         }
         DropdownMenu(expanded = toolsExpanded, onDismissRequest = { toolsExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Scansiona documento (fotocamera)") },
+                onClick = {
+                    toolsExpanded = false
+                    onScanDocument()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("OCR: immagine/PDF → testo") },
+                onClick = {
+                    toolsExpanded = false
+                    onPickOcr()
+                },
+            )
             DropdownMenuItem(
                 text = { Text("Unisci più immagini in un PDF") },
                 onClick = {

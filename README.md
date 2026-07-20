@@ -9,10 +9,11 @@ immagini, documenti/testo e audio/video.
 |---|---|
 | Immagini | JPG ⇄ PNG ⇄ WEBP ⇄ BMP; HEIC/GIF → una di queste (solo sorgente, vedi sotto) |
 | Immagini ⇄ Documenti | Immagine → PDF, PDF → immagine (multi-pagina esportato come .zip) |
-| Testo/Documenti | TXT ⇄ PDF, DOCX → TXT/PDF, EPUB → TXT/PDF, TXT → EPUB, MD → TXT/PDF, HTML → TXT/PDF, RTF → TXT/PDF |
+| Testo/Documenti | TXT ⇄ PDF, DOCX → TXT/PDF, EPUB → TXT/PDF, TXT → EPUB, MD → TXT/PDF, HTML → TXT/PDF, RTF → TXT/PDF, PPTX → TXT/PDF |
 | Fumetti | CBZ ⇄ PDF, immagine → CBZ |
 | Fogli di calcolo | CSV ⇄ XLSX |
 | Audio/Video | MP3, WAV, AAC, M4A, FLAC, OGG ⇄ tra loro; MP4, MKV, AVI, WEBM, MOV ⇄ tra loro; video → audio (es. MP4 → MP3) |
+| Scansione / OCR | Fotocamera → PDF (scanner Google), immagine/PDF scannerizzato → testo (OCR on-device) |
 
 L'architettura (`ConversionEngine` + `FileConverter`) è pensata per aggiungere nuove
 coppie di formati in futuro senza toccare il resto dell'app: basta implementare
@@ -33,6 +34,23 @@ Un unico pulsante con menu a tendina, per non riempire la schermata di pulsanti:
   sono più file li impacchetta in uno .zip per condividerli in un colpo solo. File di
   formati diversi nella stessa selezione non sono supportati: l'app te lo segnala
   chiaramente invece di indovinare cosa fare.
+- **Scansiona documento (fotocamera)** — apre lo scanner documenti ufficiale di Google
+  (`play-services-mlkit-document-scanner`, lo stesso componente usato da Drive/Docs):
+  rilevamento bordi, correzione prospettica, più pagine → un PDF. Non l'ho scritto da
+  zero apposta: fare bene l'inquadratura/crop automatico richiede visione artificiale
+  vera, cosa che non potrei verificare senza testare su un dispositivo reale — molto
+  più sensato appoggiarsi al componente di Google, già rifinito, piuttosto che
+  arrangiare qualcosa di fragile con CameraX. **Richiede Google Play Services** sul
+  dispositivo (praticamente sempre presente, tranne su ROM senza servizi Google) e un
+  primo avvio con un piccolo download del modulo, gestito automaticamente da Play
+  Services.
+- **OCR: immagine/PDF → testo** — riconoscimento testo on-device con ML Kit
+  (`com.google.mlkit:text-recognition`, variante "bundled": il modello è dentro l'APK,
+  funziona offline dal primo avvio, nessun download). Utile per immagini/PDF
+  *scannerizzati* senza livello di testo; per un PDF "nato digitale" la conversione
+  normale PDF→TXT (estrazione reale via PdfBox) resta più accurata e va preferita — è
+  per questo che l'OCR è uno strumento separato nel menu, non una conversione PDF→TXT
+  alternativa: altrimenti l'app dovrebbe indovinare quale dei due usare.
 
 ## Lettore integrato e libreria con etichette
 
@@ -52,8 +70,9 @@ Toccando un file si apre nel lettore integrato:
 - **PDF** → pager pagina per pagina (scorrimento orizzontale), renderizzato al volo con
   `PdfRenderer` (nessun caricamento di tutte le pagine in memoria insieme).
 - **CBZ** → stesso pager, leggendo le pagine direttamente dallo zip.
-- **EPUB / DOCX / TXT** → testo estratto e scorrevole (stessi estrattori usati per le
-  conversioni: `EpubReader`, `DocxReader`).
+- **EPUB / DOCX / PPTX / MD / HTML / RTF / TXT** → testo estratto e scorrevole (stessi
+  estrattori usati per le conversioni: `EpubReader`, `DocxReader`, `PptxReader`, ecc.).
+- **XLSX** → tabella scorrevole (orizzontale e verticale).
 - **Immagini** → visualizzatore a schermo intero (adattato, senza zoom/pinch per ora).
 - **Audio/video/altro** → l'app non prova a "leggerli": mostra un pulsante per aprirli
   con un'altra app installata sul telefono.
@@ -136,12 +155,26 @@ versioni), sono localizzati e facili da correggere.
   scritto a mano. RTF in particolare è quello con la struttura più complessa (gruppi
   `{...}` annidati arbitrariamente): la resa è buona su documenti semplici, meno precisa
   su tabelle/oggetti incorporati profondamente annidati.
+- PPTX (`PptxReader.kt`): stesso approccio di EPUB per l'ordine — l'ordine delle slide
+  viene risolto tramite `presentation.xml` → `presentation.xml.rels` → `slideN.xml`,
+  non tramite il nome del file, perché PowerPoint non rinomina i file quando l'utente
+  riordina le slide dall'interfaccia (affidarsi al nome del file darebbe l'ordine
+  sbagliato per qualsiasi presentazione riordinata).
+- OCR e scanner documenti (`OcrTool.kt`, pulsante "Scansiona documento"): a differenza
+  di Apache POI, qui le due librerie Google (`com.google.mlkit:text-recognition` e
+  `play-services-mlkit-document-scanner`) sono ufficiali, mantenute attivamente e
+  pensate apposta per Android — verificate contro la documentazione reale dell'API
+  prima di scrivere il codice, non assunte a memoria. Il modulo di riconoscimento
+  testo è incluso nell'APK (offline dal primo avvio); lo scanner documenti invece è
+  erogato dinamicamente da Google Play Services (richiede Play Services sul
+  dispositivo, primo avvio con piccolo download automatico).
 
 ## Limiti noti / possibili estensioni future
 
-Già implementato: EPUB, CBZ, CSV/XLSX, Markdown, HTML, RTF, unione PDF, conversione
-batch generica, lettore integrato, libreria con etichette. Restano fuori scope per ora
-(richiederebbero librerie pesanti, servizi esterni, o più tempo di sviluppo/verifica):
+Già implementato: EPUB, CBZ, CSV/XLSX, Markdown, HTML, RTF, PPTX, OCR, scanner
+documenti, unione PDF, conversione batch generica, lettore integrato, libreria con
+etichette. Restano fuori scope per ora (richiederebbero librerie pesanti/non
+affidabili su Android, servizi esterni, o più tempo di sviluppo/verifica):
 
 - **DOCX** è supportato solo in lettura (→ TXT/PDF), non in scrittura (TXT/PDF → DOCX).
 - **CBR** (comic book RAR): richiederebbe una libreria di estrazione RAR (es. junrar,
@@ -151,8 +184,15 @@ batch generica, lettore integrato, libreria con etichette. Restano fuori scope p
   servirebbe una libreria esterna anche solo per leggerli.
 - **HEIC/GIF come formato di *destinazione***: Android li decodifica ma non li
   incodifica (nessun encoder pubblico nell'SDK) — restano solo sorgenti.
-- **OCR** (immagine/PDF scannerizzato → testo ricercabile): fattibile con ML Kit di
-  Google offline, non incluso.
+- **.doc/.xls/.ppt** (Office pre-2007, formato binario OLE): valutato e scartato
+  deliberatamente. Apache POI "vera" dipende da `java.awt`/`javax.imageio`, assenti su
+  Android — non è un problema di API leggermente diverse come quelli già corretti in
+  questo progetto, ma un'incompatibilità strutturale che tipicamente si manifesta solo
+  a runtime (crash), non in compilazione. L'unico fork pensato per Android
+  (`SUPERCILEX/poi-android`) è archiviato e non mantenuto dal 2022, e comunque non
+  copre chiaramente Word/PowerPoint. Scriverlo a mano come DOCX/EPUB/XLSX non è
+  realistico: quelli sono zip+XML (semplici), il binario OLE ha una struttura interna
+  tutt'altro che banale da implementare correttamente senza file reali su cui testare.
 - **Job lunghi in background**: le conversioni audio/video girano finché l'app resta
   in foreground; su video molto lunghi converrebbe spostarle su `WorkManager` con
   notifica persistente così sopravvivono anche se l'utente esce dall'app.
