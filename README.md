@@ -14,6 +14,7 @@ immagini, documenti/testo e audio/video.
 | Fogli di calcolo | CSV ⇄ XLSX |
 | Audio/Video | MP3, WAV, AAC, M4A, FLAC, OGG ⇄ tra loro; MP4, MKV, AVI, WEBM, MOV ⇄ tra loro; video → audio (es. MP4 → MP3) |
 | Scansione / OCR | Fotocamera → PDF (scanner Google), immagine/PDF scannerizzato → testo (OCR on-device) |
+| Archivi / privacy | Crea ZIP da più file, estrai ZIP → libreria, rimuovi metadati EXIF/GPS da immagine |
 
 L'architettura (`ConversionEngine` + `FileConverter`) è pensata per aggiungere nuove
 coppie di formati in futuro senza toccare il resto dell'app: basta implementare
@@ -51,6 +52,19 @@ Un unico pulsante con menu a tendina, per non riempire la schermata di pulsanti:
   normale PDF→TXT (estrazione reale via PdfBox) resta più accurata e va preferita — è
   per questo che l'OCR è uno strumento separato nel menu, non una conversione PDF→TXT
   alternativa: altrimenti l'app dovrebbe indovinare quale dei due usare.
+- **Crea ZIP da più file** — zippa qualsiasi selezione di file, di formati anche
+  diversi tra loro (a differenza di "Converti più file insieme", qui non c'è nessuna
+  conversione, solo archiviazione).
+- **Estrai ZIP nella libreria** — apre uno ZIP esistente e aggiunge alla libreria ogni
+  file al suo interno il cui formato viene riconosciuto (quelli non riconosciuti
+  vengono ignorati, te lo segnala se non ne trova nessuno). Il risultato è
+  intrinsecamente "più file di tipo vario", quindi non passa dalla solita schermata
+  di successo a file singolo: ti porta direttamente in libreria a vederli.
+- **Rimuovi metadati EXIF/GPS da immagine** — utile prima di condividere una foto per
+  non far trapelare dove/quando è stata scattata. Nessuna libreria nuova: decodificare
+  e poi ri-salvare un'immagine la priva già di tutti i metadati come effetto
+  collaterale (un `Bitmap` non porta con sé i tag EXIF), quindi basta riusare
+  l'encoder immagini già scritto per le conversioni normali.
 
 ## Lettore integrato e libreria con etichette
 
@@ -63,9 +77,9 @@ Pulsante **"LIBRERIA"** in alto a destra nell'app. Due modi per aggiungere file:
 In entrambi i casi il file viene copiato in uno spazio permanente dell'app (non nella
 cache, che il sistema può svuotare in qualsiasi momento).
 
-Nella libreria: elenco dei file salvati, filtro per etichetta (chip in alto), e per
-ogni file "ETICHETTE" (dialogo con etichette separate da virgola, libere) ed "ELIMINA".
-Toccando un file si apre nel lettore integrato:
+Nella libreria: ricerca per nome, ordinamento (più recenti/nome/dimensione), filtro per
+etichetta (chip in alto), e per ogni file "ETICHETTE" (dialogo con etichette separate
+da virgola, libere) ed "ELIMINA". Toccando un file si apre nel lettore integrato:
 
 - **PDF** → pager pagina per pagina (scorrimento orizzontale), renderizzato al volo con
   `PdfRenderer` (nessun caricamento di tutte le pagine in memoria insieme).

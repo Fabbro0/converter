@@ -4,6 +4,7 @@ enum class FormatCategory(val label: String) {
     IMAGE("Immagine"),
     DOCUMENT("Documento"),
     SPREADSHEET("Foglio di calcolo"),
+    ARCHIVE("Archivio"),
     AUDIO("Audio"),
     VIDEO("Video"),
 }
@@ -50,6 +51,9 @@ enum class FileFormat(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         FormatCategory.SPREADSHEET,
     ),
+
+    // Archives
+    ZIP("zip", "application/zip", FormatCategory.ARCHIVE),
 
     // Audio
     MP3("mp3", "audio/mpeg", FormatCategory.AUDIO),

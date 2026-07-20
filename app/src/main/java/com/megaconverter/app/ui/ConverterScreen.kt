@@ -39,6 +39,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -70,10 +71,12 @@ import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.converter.FormatCategory
+import com.megaconverter.app.converter.converters.ExifStripper
 import com.megaconverter.app.converter.converters.MultiImageToCbz
 import com.megaconverter.app.converter.converters.MultiImageToPdf
 import com.megaconverter.app.converter.converters.OcrTool
 import com.megaconverter.app.converter.converters.PdfMerge
+import com.megaconverter.app.converter.converters.ZipTool
 import com.megaconverter.app.library.LibraryStore
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
@@ -272,6 +275,97 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
             }
     }
 
+    val createZipLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("CREAZIONE ZIP IN CORSO…", "${uris.size} file → un unico ZIP")
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val files = uris.map { uri ->
+                            val name = FileUtils.displayNameFromUri(context, uri)
+                            FileUtils.copyToCache(context, uri, name)
+                        }
+                        val outputFile = ZipTool.createZip(context, files, "archivio") { p ->
+                            mainHandler.post { progress = p }
+                        }
+                        ConversionResult.Success(outputFile, FileFormat.ZIP)
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante la creazione dello ZIP")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    val extractZipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("ESTRAZIONE ZIP IN CORSO…", "Aggiunta dei file alla libreria…")
+            scope.launch {
+                val outcome = withContext(Dispatchers.IO) {
+                    try {
+                        val displayName = FileUtils.displayNameFromUri(context, uri)
+                        val file = FileUtils.copyToCache(context, uri, displayName)
+                        Result.success(ZipTool.extractToLibrary(context, file))
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                }
+                outcome.fold(
+                    onSuccess = { (added, skipped) ->
+                        if (added > 0) {
+                            onOpenLibrary()
+                        } else {
+                            uiState = UiState.Error(
+                                if (skipped > 0) {
+                                    "Nessun formato riconosciuto tra i $skipped file nello ZIP"
+                                } else {
+                                    "Lo ZIP è vuoto"
+                                },
+                            )
+                        }
+                    },
+                    onFailure = { e -> uiState = UiState.Error(e.message ?: "Errore durante l'estrazione dello ZIP") },
+                )
+            }
+        }
+    }
+
+    val exifStripLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("RIMOZIONE METADATI IN CORSO…", "Elaborazione dell'immagine…")
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val displayName = FileUtils.displayNameFromUri(context, uri)
+                        val format = FileUtils.detectFormat(context, uri, displayName)
+                        if (format == null || format.category != FormatCategory.IMAGE) {
+                            ConversionResult.Failure("Seleziona un'immagine")
+                        } else {
+                            val file = FileUtils.copyToCache(context, uri, displayName)
+                            val outputFile = ExifStripper.strip(context, file, format, displayName)
+                            ConversionResult.Success(outputFile, format)
+                        }
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante la rimozione dei metadati")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
+        }
+    }
+
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { destUri ->
         val current = uiState
         if (destUri != null && current is UiState.Success) {
@@ -382,6 +476,9 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                         onPickBatch = { batchPickerLauncher.launch(arrayOf("*/*")) },
                         onPickOcr = { ocrPickerLauncher.launch(arrayOf("image/*", "application/pdf")) },
                         onScanDocument = { startDocumentScan() },
+                        onCreateZip = { createZipLauncher.launch(arrayOf("*/*")) },
+                        onExtractZip = { extractZipLauncher.launch(arrayOf("application/zip")) },
+                        onStripExif = { exifStripLauncher.launch(arrayOf("image/*")) },
                     )
                     is UiState.FileSelected -> FileSelectedContent(
                         state = state,
@@ -474,6 +571,9 @@ private fun IdleContent(
     onPickBatch: () -> Unit,
     onPickOcr: () -> Unit,
     onScanDocument: () -> Unit,
+    onCreateZip: () -> Unit,
+    onExtractZip: () -> Unit,
+    onStripExif: () -> Unit,
 ) {
     Spacer(Modifier.height(40.dp))
     Icon(
@@ -523,6 +623,7 @@ private fun IdleContent(
                     onPickOcr()
                 },
             )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Unisci più immagini in un PDF") },
                 onClick = {
@@ -549,6 +650,29 @@ private fun IdleContent(
                 onClick = {
                     toolsExpanded = false
                     onPickBatch()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Crea ZIP da più file") },
+                onClick = {
+                    toolsExpanded = false
+                    onCreateZip()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Estrai ZIP nella libreria") },
+                onClick = {
+                    toolsExpanded = false
+                    onExtractZip()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Rimuovi metadati EXIF/GPS da immagine") },
+                onClick = {
+                    toolsExpanded = false
+                    onStripExif()
                 },
             )
         }

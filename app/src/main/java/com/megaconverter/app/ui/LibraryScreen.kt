@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,6 +51,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+private enum class LibrarySort(val label: String) {
+    RECENT("Più recenti"),
+    NAME("Nome (A-Z)"),
+    SIZE("Dimensione"),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -> Unit) {
@@ -57,6 +66,9 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var tagDialogItem by remember { mutableStateOf<LibraryItem?>(null) }
     var addError by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var sortMode by remember { mutableStateOf(LibrarySort.RECENT) }
+    var sortExpanded by remember { mutableStateOf(false) }
 
     fun refresh() {
         scope.launch { items = withContext(Dispatchers.IO) { LibraryStore.loadAll(context) } }
@@ -93,7 +105,16 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
     LaunchedEffect(Unit) { refresh() }
 
     val allTags = items.flatMap { it.tags }.distinct().sorted()
-    val visibleItems = if (selectedTag == null) items else items.filter { selectedTag in it.tags }
+    val visibleItems = items
+        .filter { selectedTag == null || selectedTag in it.tags }
+        .filter { searchQuery.isBlank() || it.displayName.contains(searchQuery, ignoreCase = true) }
+        .let { list ->
+            when (sortMode) {
+                LibrarySort.RECENT -> list.sortedByDescending { it.addedAt }
+                LibrarySort.NAME -> list.sortedBy { it.displayName.lowercase() }
+                LibrarySort.SIZE -> list.sortedByDescending { LibraryStore.fileFor(context, it).length() }
+            }
+        }
 
     Scaffold(
         topBar = {
@@ -119,6 +140,37 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
                     color = MaterialTheme.colorScheme.error,
                 )
                 Spacer(Modifier.height(12.dp))
+            }
+            if (items.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Cerca per nome") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box {
+                        OutlinedButton(onClick = { sortExpanded = true }) {
+                            Text("ORDINA ⌄")
+                        }
+                        DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                            LibrarySort.entries.forEach { sort ->
+                                DropdownMenuItem(
+                                    text = { Text(sort.label) },
+                                    onClick = {
+                                        sortMode = sort
+                                        sortExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
             }
             if (allTags.isNotEmpty()) {
                 Row(
