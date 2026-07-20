@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
@@ -62,6 +63,7 @@ import com.megaconverter.app.converter.ConversionEngine
 import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
+import com.megaconverter.app.converter.converters.MultiImageToPdf
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,6 +82,35 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
     val pickFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             scope.launch { uiState = loadFile(context, engine, uri) }
+        }
+    }
+
+    val multiImagePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            progress = 0f
+            uiState = UiState.MultiImageConverting(uris.size)
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val files = uris.map { uri ->
+                            val name = FileUtils.displayNameFromUri(context, uri)
+                            FileUtils.copyToCache(context, uri, name)
+                        }
+                        val outputFile = MultiImageToPdf.combine(context, files, "immagini_unite") { p ->
+                            mainHandler.post { progress = p }
+                        }
+                        ConversionResult.Success(outputFile, FileFormat.PDF)
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante l'unione delle immagini")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
         }
     }
 
@@ -136,7 +167,10 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 when (val state = uiState) {
-                    is UiState.Idle -> IdleContent(onPick = { pickFileLauncher.launch(arrayOf("*/*")) })
+                    is UiState.Idle -> IdleContent(
+                        onPick = { pickFileLauncher.launch(arrayOf("*/*")) },
+                        onPickMultiImages = { multiImagePickerLauncher.launch(arrayOf("image/*")) },
+                    )
                     is UiState.FileSelected -> FileSelectedContent(
                         state = state,
                         onTargetChange = { target -> uiState = state.copy(targetFormat = target) },
@@ -144,6 +178,7 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
                         onPickAnother = { pickFileLauncher.launch(arrayOf("*/*")) },
                     )
                     is UiState.Converting -> ConvertingContent(state = state, progress = progress)
+                    is UiState.MultiImageConverting -> MultiImageConvertingContent(state = state, progress = progress)
                     is UiState.Success -> SuccessContent(
                         state = state,
                         onOpen = { context.startActivity(FileUtils.openIntent(context, state.outputFile, FileUtils.guessMimeType(state.outputFile, state.outputFormat))) },
@@ -183,7 +218,7 @@ private suspend fun loadFile(context: Context, engine: ConversionEngine, uri: Ur
     }
 
 @Composable
-private fun IdleContent(onPick: () -> Unit) {
+private fun IdleContent(onPick: () -> Unit, onPickMultiImages: () -> Unit) {
     Spacer(Modifier.height(48.dp))
     Icon(
         imageVector = Icons.Filled.UploadFile,
@@ -209,6 +244,12 @@ private fun IdleContent(onPick: () -> Unit) {
         Icon(Icons.Filled.FileOpen, contentDescription = null)
         Spacer(Modifier.width(8.dp))
         Text("SCEGLI FILE")
+    }
+    Spacer(Modifier.height(12.dp))
+    OutlinedButton(onClick = onPickMultiImages) {
+        Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text("UNISCI PIÙ IMMAGINI IN UN PDF")
     }
 }
 
@@ -293,6 +334,28 @@ private fun ConvertingContent(state: UiState.Converting, progress: Float) {
     Spacer(Modifier.height(4.dp))
     Text(
         "${state.input.displayName} → .${state.targetFormat.extension.uppercase()}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (progress > 0f) {
+        Spacer(Modifier.height(16.dp))
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun MultiImageConvertingContent(state: UiState.MultiImageConverting, progress: Float) {
+    Spacer(Modifier.height(64.dp))
+    if (progress > 0f) {
+        CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(72.dp))
+    } else {
+        CircularProgressIndicator(modifier = Modifier.size(72.dp))
+    }
+    Spacer(Modifier.height(24.dp))
+    Text("UNIONE IN CORSO…", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "${state.totalCount} immagini → un unico PDF",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

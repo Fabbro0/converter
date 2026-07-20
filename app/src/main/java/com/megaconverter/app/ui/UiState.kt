@@ -12,6 +12,7 @@ sealed interface UiState {
         val availableTargets: List<FileFormat>,
     ) : UiState
     data class Converting(val input: ConversionInput, val targetFormat: FileFormat) : UiState
-    data class Success(val input: ConversionInput, val outputFile: File, val outputFormat: FileFormat) : UiState
+    data class MultiImageConverting(val totalCount: Int) : UiState
+    data class Success(val input: ConversionInput?, val outputFile: File, val outputFormat: FileFormat) : UiState
     data class Error(val message: String, val previous: FileSelected? = null) : UiState
 }
