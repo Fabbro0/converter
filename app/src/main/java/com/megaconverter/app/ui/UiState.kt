@@ -20,6 +20,7 @@ sealed interface UiState {
     /** Covers every "many files in, one operation, one result" flow: image merge, PDF
      * merge, batch conversion. [label] and [detail] are the two lines shown while it runs. */
     data class BatchProcessing(val label: String, val detail: String) : UiState
+    data class Signing(val input: ConversionInput) : UiState
     data class Success(val input: ConversionInput?, val outputFile: File, val outputFormat: FileFormat) : UiState
     data class Error(val message: String, val previous: FileSelected? = null) : UiState
 }

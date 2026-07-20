@@ -76,6 +76,7 @@ import com.megaconverter.app.converter.converters.MultiImageToCbz
 import com.megaconverter.app.converter.converters.MultiImageToPdf
 import com.megaconverter.app.converter.converters.OcrTool
 import com.megaconverter.app.converter.converters.PdfMerge
+import com.megaconverter.app.converter.converters.PdfSigner
 import com.megaconverter.app.converter.converters.ZipTool
 import com.megaconverter.app.library.LibraryStore
 import com.megaconverter.app.util.FileUtils
@@ -371,6 +372,27 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
         }
     }
 
+    val signPdfPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                uiState = withContext(Dispatchers.IO) {
+                    try {
+                        val displayName = FileUtils.displayNameFromUri(context, uri)
+                        val format = FileUtils.detectFormat(context, uri, displayName)
+                        if (format != FileFormat.PDF) {
+                            UiState.Error("Seleziona un file PDF")
+                        } else {
+                            val file = FileUtils.copyToCache(context, uri, displayName)
+                            UiState.Signing(ConversionInput(file, displayName, format))
+                        }
+                    } catch (e: Exception) {
+                        UiState.Error(e.message ?: "Errore durante la selezione del file")
+                    }
+                }
+            }
+        }
+    }
+
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { destUri ->
         val current = uiState
         if (destUri != null && current is UiState.Success) {
@@ -521,6 +543,10 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                             showToolsMenu = false
                             exifStripLauncher.launch(arrayOf("image/*"))
                         },
+                        onSignPdf = {
+                            showToolsMenu = false
+                            signPdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        },
                     )
                     return@Column
                 }
@@ -543,6 +569,31 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                     )
                     is UiState.Converting -> ConvertingContent(state = state, progress = progress)
                     is UiState.BatchProcessing -> BatchProcessingContent(state = state, progress = progress)
+                    is UiState.Signing -> SignaturePadContent(
+                        onApply = { bitmap ->
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    try {
+                                        val outputFile = PdfSigner.sign(
+                                            context,
+                                            state.input.sourceFile,
+                                            bitmap,
+                                            state.input.displayName,
+                                        )
+                                        ConversionResult.Success(outputFile, FileFormat.PDF)
+                                    } catch (e: Exception) {
+                                        ConversionResult.Failure(e.message ?: "Errore durante la firma del PDF")
+                                    }
+                                }
+                                uiState = when (result) {
+                                    is ConversionResult.Success ->
+                                        UiState.Success(state.input, result.outputFile, result.format)
+                                    is ConversionResult.Failure -> UiState.Error(result.message)
+                                }
+                            }
+                        },
+                        onCancel = { uiState = UiState.Idle },
+                    )
                     is UiState.Success -> SuccessContent(
                         state = state,
                         onOpen = { context.startActivity(FileUtils.openIntent(context, state.outputFile, FileUtils.guessMimeType(state.outputFile, state.outputFormat))) },
@@ -658,6 +709,7 @@ private fun ToolsMenuContent(
     onCreateZip: () -> Unit,
     onExtractZip: () -> Unit,
     onStripExif: () -> Unit,
+    onSignPdf: () -> Unit,
 ) {
     val tools = listOf(
         ToolEntry(
@@ -688,6 +740,12 @@ private fun ToolsMenuContent(
             "Prendi più PDF già esistenti e uniscili in un solo file, mantenendo la qualità " +
                 "originale (non è una scansione delle pagine).",
             onPickMultiPdf,
+        ),
+        ToolEntry(
+            "Firma un PDF",
+            "Disegna una firma col dito e applicala in basso a destra dell'ultima pagina di " +
+                "un PDF esistente.",
+            onSignPdf,
         ),
         ToolEntry(
             "Converti più file insieme",

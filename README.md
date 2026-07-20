@@ -36,6 +36,11 @@ riga di spiegazione (un menu a tendina compresso non lasciava spazio per descriv
   sono più file li impacchetta in uno .zip per condividerli in un colpo solo. File di
   formati diversi nella stessa selezione non sono supportati: l'app te lo segnala
   chiaramente invece di indovinare cosa fare.
+- **Firma un PDF** — disegna una firma col dito su un riquadro dedicato e applicala in
+  basso a destra dell'ultima pagina di un PDF esistente. Usa `PDPageContentStream` di
+  PdfBox-Android in modalità "append" per disegnare *sopra* la pagina esistente, non
+  per rigenerarla: il resto del documento (testo, altre immagini) resta intatto e alla
+  qualità originale, non viene rasterizzato.
 - **Scansiona documento (fotocamera)** — apre lo scanner documenti ufficiale di Google
   (`play-services-mlkit-document-scanner`, lo stesso componente usato da Drive/Docs):
   rilevamento bordi, correzione prospettica, più pagine → un PDF. Non l'ho scritto da
