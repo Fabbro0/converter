@@ -1,7 +1,7 @@
 package com.megaconverter.app
 
 import android.app.Application
-import com.tom_roush.pdfbox.util.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 class MegaConverterApp : Application() {
     override fun onCreate() {
