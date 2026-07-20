@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +29,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenu
@@ -119,7 +120,7 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Mega Converter", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(title = { Text("MEGA CONVERTER") })
         },
     ) { padding ->
         Box(
@@ -193,11 +194,12 @@ private fun IdleContent(onPick: () -> Unit) {
     )
     Spacer(Modifier.height(24.dp))
     Text(
-        "Converti qualsiasi file",
+        "CONVERTI QUALSIASI FILE",
         style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
+    DotRow()
+    Spacer(Modifier.height(12.dp))
     Text(
         "Immagini, documenti, audio e video: scegli un file e scegli in cosa trasformarlo.",
         style = MaterialTheme.typography.bodyMedium,
@@ -207,7 +209,7 @@ private fun IdleContent(onPick: () -> Unit) {
     Button(onClick = onPick) {
         Icon(Icons.Filled.FileOpen, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text("Scegli file")
+        Text("SCEGLI FILE")
     }
 }
 
@@ -221,9 +223,13 @@ private fun FileSelectedContent(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(2.dp)) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
         Column(Modifier.padding(20.dp)) {
-            Text("File selezionato", style = MaterialTheme.typography.labelLarge)
+            Text("FILE SELEZIONATO", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Text(state.input.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(2.dp))
@@ -233,7 +239,7 @@ private fun FileSelectedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(20.dp))
-            Text("Converti in", style = MaterialTheme.typography.labelLarge)
+            Text("CONVERTI IN", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(6.dp))
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                 OutlinedTextField(
@@ -266,10 +272,10 @@ private fun FileSelectedContent(
     Button(onClick = onConvert, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Filled.SwapHoriz, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text("Converti in .${state.targetFormat.extension.uppercase()}")
+        Text("CONVERTI IN .${state.targetFormat.extension.uppercase()}")
     }
     Spacer(Modifier.height(12.dp))
-    TextButton(onClick = onPickAnother) { Text("Scegli un altro file") }
+    TextButton(onClick = onPickAnother) { Text("SCEGLI UN ALTRO FILE") }
 }
 
 @Composable
@@ -282,9 +288,8 @@ private fun ConvertingContent(state: UiState.Converting, progress: Float) {
     }
     Spacer(Modifier.height(24.dp))
     Text(
-        "Conversione in corso…",
+        "CONVERSIONE IN CORSO…",
         style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Medium,
     )
     Spacer(Modifier.height(4.dp))
     Text(
@@ -314,7 +319,9 @@ private fun SuccessContent(
         tint = MaterialTheme.colorScheme.secondary,
     )
     Spacer(Modifier.height(16.dp))
-    Text("Conversione completata", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text("CONVERSIONE COMPLETATA", style = MaterialTheme.typography.headlineSmall)
+    Spacer(Modifier.height(8.dp))
+    DotRow()
     Spacer(Modifier.height(8.dp))
     Text(
         "${state.outputFile.name} · ${FileUtils.humanFileSize(state.outputFile.length())}",
@@ -326,18 +333,18 @@ private fun SuccessContent(
         OutlinedButton(onClick = onOpen) {
             Icon(Icons.Filled.FolderOpen, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            Text("Apri")
+            Text("APRI")
         }
         OutlinedButton(onClick = onShare) {
             Icon(Icons.Filled.Share, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            Text("Condividi")
+            Text("CONDIVIDI")
         }
     }
     Spacer(Modifier.height(12.dp))
-    OutlinedButton(onClick = onSaveAs) { Text("Salva con nome…") }
+    OutlinedButton(onClick = onSaveAs) { Text("SALVA CON NOME…") }
     Spacer(Modifier.height(20.dp))
-    Button(onClick = onConvertAnother) { Text("Converti un altro file") }
+    Button(onClick = onConvertAnother) { Text("CONVERTI UN ALTRO FILE") }
 }
 
 @Composable
@@ -350,7 +357,7 @@ private fun ErrorContent(state: UiState.Error, onRetry: () -> Unit, onPickAnothe
         tint = MaterialTheme.colorScheme.error,
     )
     Spacer(Modifier.height(16.dp))
-    Text("Qualcosa è andato storto", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text("QUALCOSA È ANDATO STORTO", style = MaterialTheme.typography.headlineSmall)
     Spacer(Modifier.height(8.dp))
     Text(
         state.message,
@@ -359,8 +366,19 @@ private fun ErrorContent(state: UiState.Error, onRetry: () -> Unit, onPickAnothe
     )
     Spacer(Modifier.height(24.dp))
     if (state.previous != null) {
-        Button(onClick = onRetry) { Text("Riprova") }
+        Button(onClick = onRetry) { Text("RIPROVA") }
         Spacer(Modifier.height(12.dp))
     }
-    TextButton(onClick = onPickAnother) { Text("Scegli un altro file") }
+    TextButton(onClick = onPickAnother) { Text("SCEGLI UN ALTRO FILE") }
+}
+
+/** Small square dot-matrix accent row, echoing Nothing's pixel-grid glyph language. */
+@Composable
+private fun DotRow() {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(5) { index ->
+            val color = if (index % 2 == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            Box(modifier = Modifier.size(4.dp).background(color))
+        }
+    }
 }
