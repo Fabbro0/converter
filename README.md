@@ -10,15 +10,20 @@ immagini, documenti/testo e audio/video.
 | Immagini | JPG ⇄ PNG ⇄ WEBP ⇄ BMP |
 | Immagini ⇄ Documenti | Immagine → PDF, PDF → immagine (multi-pagina esportato come .zip) |
 | Testo/Documenti | TXT ⇄ PDF, DOCX → TXT, DOCX → PDF, EPUB → TXT/PDF, TXT → EPUB |
+| Fumetti | CBZ ⇄ PDF, immagine → CBZ |
 | Audio/Video | MP3, WAV, AAC, M4A, FLAC, OGG ⇄ tra loro; MP4, MKV, AVI, WEBM, MOV ⇄ tra loro; video → audio (es. MP4 → MP3) |
 
 L'architettura (`ConversionEngine` + `FileConverter`) è pensata per aggiungere nuove
 coppie di formati in futuro senza toccare il resto dell'app: basta implementare
 `FileConverter` e registrarlo in `ConversionEngine.default()`.
 
-## Strumenti batch (schermata iniziale, sezione "STRUMENTI")
+## Strumenti batch (schermata iniziale, pulsante "STRUMENTI ⌄")
+
+Un unico pulsante con menu a tendina, per non riempire la schermata di pulsanti:
 
 - **Unisci più immagini in un PDF** — selezione multipla, una pagina per immagine.
+- **Unisci più immagini in un CBZ** — stessa idea ma per fumetti/pagine scannerizzate:
+  zippa le immagini in ordine senza ricomprimerle.
 - **Unisci più PDF in uno** — usa `PDFMergerUtility` di PdfBox-Android, che copia le
   pagine reali (testo/vettori inclusi) invece di rasterizzarle: qualità identica
   all'originale, non una foto delle pagine.
@@ -30,10 +35,14 @@ coppie di formati in futuro senza toccare il resto dell'app: basta implementare
 
 ## Lettore integrato e libreria con etichette
 
-Icona/pulsante **"LIBRERIA"** in alto a destra nell'app. Da qualunque conversione
-riuscita, il pulsante **"SALVA IN LIBRERIA"** copia il file in uno spazio permanente
-dell'app (non nella cache, che il sistema può svuotare in qualsiasi momento) e lo
-aggiunge alla libreria.
+Pulsante **"LIBRERIA"** in alto a destra nell'app. Due modi per aggiungere file:
+
+- **"AGGIUNGI FILE"** dentro la libreria stessa — copia direttamente un file dal
+  telefono, *senza* passare da nessuna conversione.
+- **"SALVA IN LIBRERIA"** su ogni schermata di conversione riuscita.
+
+In entrambi i casi il file viene copiato in uno spazio permanente dell'app (non nella
+cache, che il sistema può svuotare in qualsiasi momento).
 
 Nella libreria: elenco dei file salvati, filtro per etichetta (chip in alto), e per
 ogni file "ETICHETTE" (dialogo con etichette separate da virgola, libere) ed "ELIMINA".
@@ -41,6 +50,7 @@ Toccando un file si apre nel lettore integrato:
 
 - **PDF** → pager pagina per pagina (scorrimento orizzontale), renderizzato al volo con
   `PdfRenderer` (nessun caricamento di tutte le pagine in memoria insieme).
+- **CBZ** → stesso pager, leggendo le pagine direttamente dallo zip.
 - **EPUB / DOCX / TXT** → testo estratto e scorrevole (stessi estrattori usati per le
   conversioni: `EpubReader`, `DocxReader`).
 - **Immagini** → visualizzatore a schermo intero (adattato, senza zoom/pinch per ora).

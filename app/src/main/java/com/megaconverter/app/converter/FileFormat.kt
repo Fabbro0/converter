@@ -27,6 +27,7 @@ enum class FileFormat(
         FormatCategory.DOCUMENT,
     ),
     EPUB("epub", "application/epub+zip", FormatCategory.DOCUMENT),
+    CBZ("cbz", "application/vnd.comicbook+zip", FormatCategory.DOCUMENT),
 
     // Audio
     MP3("mp3", "audio/mpeg", FormatCategory.AUDIO),

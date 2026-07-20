@@ -1,5 +1,7 @@
 package com.megaconverter.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.library.LibraryItem
 import com.megaconverter.app.library.LibraryStore
+import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,9 +56,38 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var selectedTag by remember { mutableStateOf<String?>(null) }
     var tagDialogItem by remember { mutableStateOf<LibraryItem?>(null) }
+    var addError by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         scope.launch { items = withContext(Dispatchers.IO) { LibraryStore.loadAll(context) } }
+    }
+
+    val addFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val added = withContext(Dispatchers.IO) {
+                    try {
+                        val displayName = FileUtils.displayNameFromUri(context, uri)
+                        val format = FileUtils.detectFormat(context, uri, displayName)
+                        if (format == null) {
+                            false
+                        } else {
+                            val cached = FileUtils.copyToCache(context, uri, displayName)
+                            LibraryStore.addItem(context, cached, displayName, format)
+                            true
+                        }
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+                if (added) {
+                    addError = null
+                    refresh()
+                } else {
+                    addError = "Formato non riconosciuto, impossibile aggiungere il file"
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -68,6 +100,9 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
             TopAppBar(
                 title = { Text("LIBRERIA") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("INDIETRO") } },
+                actions = {
+                    TextButton(onClick = { addFileLauncher.launch(arrayOf("*/*")) }) { Text("AGGIUNGI FILE") }
+                },
             )
         },
     ) { padding ->
@@ -77,6 +112,14 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
                 .padding(padding)
                 .padding(16.dp),
         ) {
+            addError?.let { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(12.dp))
+            }
             if (allTags.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -101,7 +144,8 @@ fun LibraryScreen(onBack: () -> Unit, onOpenReader: (File, FileFormat, String) -
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Salva un file convertito con \"SALVA IN LIBRERIA\" per trovarlo qui.",
+                    "Tocca \"AGGIUNGI FILE\" qui sopra, oppure salva un file convertito con " +
+                        "\"SALVA IN LIBRERIA\".",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

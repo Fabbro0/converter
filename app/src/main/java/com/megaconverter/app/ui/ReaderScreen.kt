@@ -42,10 +42,12 @@ import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.converter.FormatCategory
 import com.megaconverter.app.converter.converters.DocxReader
 import com.megaconverter.app.converter.converters.EpubReader
+import com.megaconverter.app.converter.converters.NaturalSort
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.zip.ZipFile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +64,7 @@ fun ReaderScreen(file: File, format: FileFormat, displayName: String, onBack: ()
             when {
                 format.category == FormatCategory.IMAGE -> ImageReaderContent(file)
                 format == FileFormat.PDF -> PdfReaderContent(file)
+                format == FileFormat.CBZ -> CbzReaderContent(file)
                 format == FileFormat.TXT -> TextFileReaderContent(file)
                 format == FileFormat.DOCX -> ExtractedTextReaderContent(file, DocxReader::extractText)
                 format == FileFormat.EPUB -> ExtractedTextReaderContent(file, EpubReader::extractText)
@@ -177,6 +180,85 @@ private fun PdfPageImage(file: File, pageIndex: Int) {
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         bmp
                     }
+                }
+            }
+        }
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            CircularProgressIndicator()
+        }
+    }
+}
+
+private val CBZ_IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "bmp")
+
+@Composable
+private fun CbzReaderContent(file: File) {
+    var entryNames by remember(file) { mutableStateOf<List<String>>(emptyList()) }
+    var loadError by remember(file) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file) {
+        try {
+            entryNames = withContext(Dispatchers.IO) {
+                ZipFile(file).use { zip ->
+                    zip.entries().asSequence()
+                        .filter { !it.isDirectory && it.name.substringAfterLast('.', "").lowercase() in CBZ_IMAGE_EXTENSIONS }
+                        .map { it.name }
+                        .sortedWith(NaturalSort.comparator)
+                        .toList()
+                }
+            }
+        } catch (e: Exception) {
+            loadError = e.message ?: "CBZ non leggibile"
+        }
+    }
+
+    val error = loadError
+    if (error != null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(24.dp))
+        }
+        return
+    }
+    if (entryNames.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+
+    val pagerState = rememberPagerState(pageCount = { entryNames.size })
+    Column(Modifier.fillMaxSize()) {
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { pageIndex ->
+            CbzPageImage(file = file, entryName = entryNames[pageIndex])
+        }
+        Text(
+            "${pagerState.currentPage + 1} / ${entryNames.size}",
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun CbzPageImage(file: File, entryName: String) {
+    var bitmap by remember(file, entryName) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(file, entryName) {
+        bitmap = withContext(Dispatchers.IO) {
+            ZipFile(file).use { zip ->
+                val entry = zip.getEntry(entryName)
+                if (entry != null) {
+                    zip.getInputStream(entry).use { input -> BitmapFactory.decodeStream(input) }
+                } else {
+                    null
                 }
             }
         }

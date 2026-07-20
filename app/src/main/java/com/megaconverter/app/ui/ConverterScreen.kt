@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.UploadFile
@@ -33,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -63,6 +63,7 @@ import com.megaconverter.app.converter.ConversionEngine
 import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
+import com.megaconverter.app.converter.converters.MultiImageToCbz
 import com.megaconverter.app.converter.converters.MultiImageToPdf
 import com.megaconverter.app.converter.converters.PdfMerge
 import com.megaconverter.app.library.LibraryStore
@@ -109,6 +110,35 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                         ConversionResult.Success(outputFile, FileFormat.PDF)
                     } catch (e: Exception) {
                         ConversionResult.Failure(e.message ?: "Errore durante l'unione delle immagini")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    val multiImageToCbzPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("UNIONE IN CORSO…", "${uris.size} immagini → un unico CBZ")
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val files = uris.map { uri ->
+                            val name = FileUtils.displayNameFromUri(context, uri)
+                            FileUtils.copyToCache(context, uri, name)
+                        }
+                        val outputFile = MultiImageToCbz.combine(context, files, "fumetto") { p ->
+                            mainHandler.post { progress = p }
+                        }
+                        ConversionResult.Success(outputFile, FileFormat.CBZ)
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante la creazione del CBZ")
                     }
                 }
                 uiState = when (result) {
@@ -263,6 +293,7 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                     is UiState.Idle -> IdleContent(
                         onPick = { pickFileLauncher.launch(arrayOf("*/*")) },
                         onPickMultiImages = { multiImagePickerLauncher.launch(arrayOf("image/*")) },
+                        onPickMultiImagesToCbz = { multiImageToCbzPickerLauncher.launch(arrayOf("image/*")) },
                         onPickMultiPdf = { multiPdfPickerLauncher.launch(arrayOf("application/pdf")) },
                         onPickBatch = { batchPickerLauncher.launch(arrayOf("*/*")) },
                     )
@@ -352,6 +383,7 @@ private suspend fun loadBatch(context: Context, engine: ConversionEngine, uris: 
 private fun IdleContent(
     onPick: () -> Unit,
     onPickMultiImages: () -> Unit,
+    onPickMultiImagesToCbz: () -> Unit,
     onPickMultiPdf: () -> Unit,
     onPickBatch: () -> Unit,
 ) {
@@ -381,29 +413,43 @@ private fun IdleContent(
         Spacer(Modifier.width(8.dp))
         Text("SCEGLI FILE")
     }
-    Spacer(Modifier.height(28.dp))
-    Text(
-        "STRUMENTI",
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = onPickMultiImages, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text("UNISCI PIÙ IMMAGINI IN UN PDF")
-    }
-    Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = onPickMultiPdf, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Filled.FileOpen, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text("UNISCI PIÙ PDF IN UNO")
-    }
-    Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = onPickBatch, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Filled.SwapHoriz, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text("CONVERTI PIÙ FILE INSIEME")
+    Spacer(Modifier.height(12.dp))
+
+    var toolsExpanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { toolsExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("STRUMENTI ⌄")
+        }
+        DropdownMenu(expanded = toolsExpanded, onDismissRequest = { toolsExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Unisci più immagini in un PDF") },
+                onClick = {
+                    toolsExpanded = false
+                    onPickMultiImages()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Unisci più immagini in un CBZ") },
+                onClick = {
+                    toolsExpanded = false
+                    onPickMultiImagesToCbz()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Unisci più PDF in uno") },
+                onClick = {
+                    toolsExpanded = false
+                    onPickMultiPdf()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Converti più file insieme") },
+                onClick = {
+                    toolsExpanded = false
+                    onPickBatch()
+                },
+            )
+        }
     }
 }
 
