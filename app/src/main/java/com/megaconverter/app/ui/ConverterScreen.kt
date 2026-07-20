@@ -6,10 +6,12 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,11 +37,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +95,11 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
 
     var uiState by remember { mutableStateOf<UiState>(UiState.Idle) }
     var progress by remember { mutableFloatStateOf(0f) }
+    var showToolsMenu by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showToolsMenu || uiState !is UiState.Idle) {
+        if (showToolsMenu) showToolsMenu = false else uiState = UiState.Idle
+    }
 
     val pickFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -449,8 +454,19 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("MEGA CONVERTER") },
-                actions = { TextButton(onClick = onOpenLibrary) { Text("LIBRERIA") } },
+                title = { Text(if (showToolsMenu) "STRUMENTI" else "MEGA CONVERTER") },
+                navigationIcon = {
+                    if (showToolsMenu || uiState !is UiState.Idle) {
+                        TextButton(onClick = {
+                            if (showToolsMenu) showToolsMenu = false else uiState = UiState.Idle
+                        }) { Text("INDIETRO") }
+                    }
+                },
+                actions = {
+                    if (!showToolsMenu) {
+                        TextButton(onClick = onOpenLibrary) { Text("LIBRERIA") }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -467,18 +483,51 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?, onOpenLibrary: (
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                if (showToolsMenu) {
+                    ToolsMenuContent(
+                        onPickMultiImages = {
+                            showToolsMenu = false
+                            multiImagePickerLauncher.launch(arrayOf("image/*"))
+                        },
+                        onPickMultiImagesToCbz = {
+                            showToolsMenu = false
+                            multiImageToCbzPickerLauncher.launch(arrayOf("image/*"))
+                        },
+                        onPickMultiPdf = {
+                            showToolsMenu = false
+                            multiPdfPickerLauncher.launch(arrayOf("application/pdf"))
+                        },
+                        onPickBatch = {
+                            showToolsMenu = false
+                            batchPickerLauncher.launch(arrayOf("*/*"))
+                        },
+                        onPickOcr = {
+                            showToolsMenu = false
+                            ocrPickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+                        },
+                        onScanDocument = {
+                            showToolsMenu = false
+                            startDocumentScan()
+                        },
+                        onCreateZip = {
+                            showToolsMenu = false
+                            createZipLauncher.launch(arrayOf("*/*"))
+                        },
+                        onExtractZip = {
+                            showToolsMenu = false
+                            extractZipLauncher.launch(arrayOf("application/zip"))
+                        },
+                        onStripExif = {
+                            showToolsMenu = false
+                            exifStripLauncher.launch(arrayOf("image/*"))
+                        },
+                    )
+                    return@Column
+                }
                 when (val state = uiState) {
                     is UiState.Idle -> IdleContent(
                         onPick = { pickFileLauncher.launch(arrayOf("*/*")) },
-                        onPickMultiImages = { multiImagePickerLauncher.launch(arrayOf("image/*")) },
-                        onPickMultiImagesToCbz = { multiImageToCbzPickerLauncher.launch(arrayOf("image/*")) },
-                        onPickMultiPdf = { multiPdfPickerLauncher.launch(arrayOf("application/pdf")) },
-                        onPickBatch = { batchPickerLauncher.launch(arrayOf("*/*")) },
-                        onPickOcr = { ocrPickerLauncher.launch(arrayOf("image/*", "application/pdf")) },
-                        onScanDocument = { startDocumentScan() },
-                        onCreateZip = { createZipLauncher.launch(arrayOf("*/*")) },
-                        onExtractZip = { extractZipLauncher.launch(arrayOf("application/zip")) },
-                        onStripExif = { exifStripLauncher.launch(arrayOf("image/*")) },
+                        onOpenTools = { showToolsMenu = true },
                     )
                     is UiState.FileSelected -> FileSelectedContent(
                         state = state,
@@ -563,18 +612,7 @@ private suspend fun loadBatch(context: Context, engine: ConversionEngine, uris: 
     }
 
 @Composable
-private fun IdleContent(
-    onPick: () -> Unit,
-    onPickMultiImages: () -> Unit,
-    onPickMultiImagesToCbz: () -> Unit,
-    onPickMultiPdf: () -> Unit,
-    onPickBatch: () -> Unit,
-    onPickOcr: () -> Unit,
-    onScanDocument: () -> Unit,
-    onCreateZip: () -> Unit,
-    onExtractZip: () -> Unit,
-    onStripExif: () -> Unit,
-) {
+private fun IdleContent(onPick: () -> Unit, onOpenTools: () -> Unit) {
     Spacer(Modifier.height(40.dp))
     Icon(
         imageVector = Icons.Filled.UploadFile,
@@ -602,80 +640,100 @@ private fun IdleContent(
         Text("SCEGLI FILE")
     }
     Spacer(Modifier.height(12.dp))
+    OutlinedButton(onClick = onOpenTools, modifier = Modifier.fillMaxWidth()) {
+        Text("STRUMENTI ⌄")
+    }
+}
 
-    var toolsExpanded by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(onClick = { toolsExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("STRUMENTI ⌄")
+private data class ToolEntry(val title: String, val description: String, val onClick: () -> Unit)
+
+@Composable
+private fun ToolsMenuContent(
+    onPickMultiImages: () -> Unit,
+    onPickMultiImagesToCbz: () -> Unit,
+    onPickMultiPdf: () -> Unit,
+    onPickBatch: () -> Unit,
+    onPickOcr: () -> Unit,
+    onScanDocument: () -> Unit,
+    onCreateZip: () -> Unit,
+    onExtractZip: () -> Unit,
+    onStripExif: () -> Unit,
+) {
+    val tools = listOf(
+        ToolEntry(
+            "Scansiona documento",
+            "Fotografa un documento con la fotocamera: bordi e prospettiva vengono corretti " +
+                "in automatico, il risultato è un PDF pulito e dritto.",
+            onScanDocument,
+        ),
+        ToolEntry(
+            "OCR: immagine/PDF → testo",
+            "Estrae il testo leggibile da una foto o da un PDF scannerizzato, cioè quando il " +
+                "PDF è in realtà solo un'immagine e non hai testo selezionabile dentro.",
+            onPickOcr,
+        ),
+        ToolEntry(
+            "Unisci più immagini in un PDF",
+            "Scegli più foto dalla galleria e uniscile in un unico PDF, una pagina per immagine.",
+            onPickMultiImages,
+        ),
+        ToolEntry(
+            "Unisci più immagini in un CBZ",
+            "Come sopra ma per fumetti: crea un file .cbz da più pagine scannerizzate, senza " +
+                "ricomprimere le immagini.",
+            onPickMultiImagesToCbz,
+        ),
+        ToolEntry(
+            "Unisci più PDF in uno",
+            "Prendi più PDF già esistenti e uniscili in un solo file, mantenendo la qualità " +
+                "originale (non è una scansione delle pagine).",
+            onPickMultiPdf,
+        ),
+        ToolEntry(
+            "Converti più file insieme",
+            "Scegli più file dello stesso formato (es. 10 foto JPG) e convertili tutti in un " +
+                "altro formato con un'unica azione.",
+            onPickBatch,
+        ),
+        ToolEntry(
+            "Crea ZIP da più file",
+            "Comprimi più file, anche di tipo diverso tra loro, in un unico archivio .zip.",
+            onCreateZip,
+        ),
+        ToolEntry(
+            "Estrai ZIP nella libreria",
+            "Apri un file .zip esistente: il suo contenuto viene aggiunto automaticamente alla " +
+                "libreria dell'app.",
+            onExtractZip,
+        ),
+        ToolEntry(
+            "Rimuovi metadati EXIF/GPS",
+            "Cancella i dati nascosti in una foto (dove e quando è stata scattata) prima di " +
+                "condividerla.",
+            onStripExif,
+        ),
+    )
+
+    Spacer(Modifier.height(8.dp))
+    tools.forEach { tool ->
+        OutlinedCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = tool.onClick),
+            colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = CardDefaults.outlinedCardBorder(),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(tool.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    tool.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        DropdownMenu(expanded = toolsExpanded, onDismissRequest = { toolsExpanded = false }) {
-            DropdownMenuItem(
-                text = { Text("Scansiona documento (fotocamera)") },
-                onClick = {
-                    toolsExpanded = false
-                    onScanDocument()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("OCR: immagine/PDF → testo") },
-                onClick = {
-                    toolsExpanded = false
-                    onPickOcr()
-                },
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("Unisci più immagini in un PDF") },
-                onClick = {
-                    toolsExpanded = false
-                    onPickMultiImages()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Unisci più immagini in un CBZ") },
-                onClick = {
-                    toolsExpanded = false
-                    onPickMultiImagesToCbz()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Unisci più PDF in uno") },
-                onClick = {
-                    toolsExpanded = false
-                    onPickMultiPdf()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Converti più file insieme") },
-                onClick = {
-                    toolsExpanded = false
-                    onPickBatch()
-                },
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("Crea ZIP da più file") },
-                onClick = {
-                    toolsExpanded = false
-                    onCreateZip()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Estrai ZIP nella libreria") },
-                onClick = {
-                    toolsExpanded = false
-                    onExtractZip()
-                },
-            )
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("Rimuovi metadati EXIF/GPS da immagine") },
-                onClick = {
-                    toolsExpanded = false
-                    onStripExif()
-                },
-            )
-        }
+        Spacer(Modifier.height(10.dp))
     }
 }
 

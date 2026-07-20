@@ -20,9 +20,10 @@ L'architettura (`ConversionEngine` + `FileConverter`) è pensata per aggiungere 
 coppie di formati in futuro senza toccare il resto dell'app: basta implementare
 `FileConverter` e registrarlo in `ConversionEngine.default()`.
 
-## Strumenti batch (schermata iniziale, pulsante "STRUMENTI ⌄")
+## Strumenti batch (pulsante "STRUMENTI ⌄" nella schermata iniziale)
 
-Un unico pulsante con menu a tendina, per non riempire la schermata di pulsanti:
+Il pulsante apre una schermata dedicata con l'elenco degli strumenti, ognuno con una
+riga di spiegazione (un menu a tendina compresso non lasciava spazio per descriverli):
 
 - **Unisci più immagini in un PDF** — selezione multipla, una pagina per immagine.
 - **Unisci più immagini in un CBZ** — stessa idea ma per fumetti/pagine scannerizzate:
@@ -65,6 +66,11 @@ Un unico pulsante con menu a tendina, per non riempire la schermata di pulsanti:
   e poi ri-salvare un'immagine la priva già di tutti i metadati come effetto
   collaterale (un `Bitmap` non porta con sé i tag EXIF), quindi basta riusare
   l'encoder immagini già scritto per le conversioni normali.
+
+Navigazione: c'è sempre un pulsante **"INDIETRO"** visibile (in alto a sinistra) non
+appena ti allontani dalla schermata iniziale — dentro uno strumento, a metà di una
+conversione, nella schermata degli strumenti — oltre al normale tasto Indietro di
+sistema, che fa la stessa cosa.
 
 ## Lettore integrato e libreria con etichette
 
