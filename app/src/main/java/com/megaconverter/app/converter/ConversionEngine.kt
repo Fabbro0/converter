@@ -3,6 +3,7 @@ package com.megaconverter.app.converter
 import android.content.Context
 import com.megaconverter.app.converter.converters.AudioVideoConverter
 import com.megaconverter.app.converter.converters.DocxConverter
+import com.megaconverter.app.converter.converters.EpubConverter
 import com.megaconverter.app.converter.converters.ImagePdfConverter
 import com.megaconverter.app.converter.converters.ImageToImageConverter
 import com.megaconverter.app.converter.converters.TextPdfConverter
@@ -43,6 +44,7 @@ class ConversionEngine(private val converters: List<FileConverter>) {
                 ImagePdfConverter(),
                 TextPdfConverter(),
                 DocxConverter(),
+                EpubConverter(),
                 AudioVideoConverter(),
             ),
         )

@@ -3,18 +3,30 @@
 App Android nativa (Kotlin + Jetpack Compose) per convertire file tra formati diversi:
 immagini, documenti/testo e audio/video.
 
-## Conversioni supportate (MVP)
+## Conversioni supportate
 
 | Categoria | Conversioni |
 |---|---|
 | Immagini | JPG ⇄ PNG ⇄ WEBP ⇄ BMP |
 | Immagini ⇄ Documenti | Immagine → PDF, PDF → immagine (multi-pagina esportato come .zip) |
-| Testo/Documenti | TXT ⇄ PDF, DOCX → TXT, DOCX → PDF |
+| Testo/Documenti | TXT ⇄ PDF, DOCX → TXT, DOCX → PDF, EPUB → TXT/PDF, TXT → EPUB |
 | Audio/Video | MP3, WAV, AAC, M4A, FLAC, OGG ⇄ tra loro; MP4, MKV, AVI, WEBM, MOV ⇄ tra loro; video → audio (es. MP4 → MP3) |
 
 L'architettura (`ConversionEngine` + `FileConverter`) è pensata per aggiungere nuove
 coppie di formati in futuro senza toccare il resto dell'app: basta implementare
 `FileConverter` e registrarlo in `ConversionEngine.default()`.
+
+## Strumenti batch (schermata iniziale, sezione "STRUMENTI")
+
+- **Unisci più immagini in un PDF** — selezione multipla, una pagina per immagine.
+- **Unisci più PDF in uno** — usa `PDFMergerUtility` di PdfBox-Android, che copia le
+  pagine reali (testo/vettori inclusi) invece di rasterizzarle: qualità identica
+  all'originale, non una foto delle pagine.
+- **Converti più file insieme** — seleziona N file dello *stesso* formato (es. 10 JPG),
+  scegli un formato di destinazione una sola volta, converte tutti; se il risultato
+  sono più file li impacchetta in uno .zip per condividerli in un colpo solo. File di
+  formati diversi nella stessa selezione non sono supportati: l'app te lo segnala
+  chiaramente invece di indovinare cosa fare.
 
 ## Come aprire/compilare il progetto
 
@@ -58,16 +70,41 @@ versioni), sono localizzati e facili da correggere.
   dentro lo zip con `XmlPullParser`, per evitare di includere una libreria OOXML
   pesante (Apache POI) solo per estrarre testo semplice. Non gestisce formattazione,
   tabelle o immagini — solo testo dei paragrafi.
+- EPUB: stessa filosofia "zero librerie pesanti". In lettura (`EpubReader.kt`) risolve
+  `META-INF/container.xml` → OPF → ordine dello spine → testo di ogni capitolo XHTML,
+  con uno strip dei tag tramite regex tollerante (non un parser XML rigido) perché
+  molti EPUB reali contengono entità HTML tipo `&nbsp;` non valide in XML puro, che
+  manderebbero in errore un parser strict. In scrittura (`EpubWriter.kt`) genera un
+  EPUB3 minimo ma valido (mimetype non compresso e primo nello zip, container.xml,
+  OPF, nav.xhtml, un capitolo), leggibile da Play Books/Apple Books/calibre ecc.
+- Unione PDF (`PdfMerge.kt`): usa `com.tom_roush.pdfbox.multipdf.PDFMergerUtility`
+  invece di rasterizzare con `PdfRenderer` — preserva il contenuto vettoriale/testo
+  reale delle pagine originali.
 
 ## Limiti noti / possibili estensioni future
 
-- DOCX è supportato solo in lettura (→ TXT/PDF), non in scrittura (TXT/PDF → DOCX).
-- Gli archivi (ZIP) non sono nell'MVP come categoria di conversione autonoma; lo zip
-  viene generato automaticamente solo quando un PDF multi-pagina viene esportato in
-  immagini.
+Già implementato in questa sessione: EPUB, unione PDF, conversione batch generica.
+Restano fuori scope per ora (richiederebbero librerie pesanti, servizi esterni, o più
+tempo di sviluppo/verifica):
+
+- **DOCX** è supportato solo in lettura (→ TXT/PDF), non in scrittura (TXT/PDF → DOCX).
+- **CSV ⇄ XLSX**: fogli di calcolo, non ancora implementato.
+- **HEIC/HEIF, GIF, TIFF, SVG**: Android decodifica HEIC/GIF nativamente (possono già
+  funzionare come *sorgente* se li selezioni, primo frame per le GIF animate), ma non
+  esiste un encoder nativo per nessuno dei quattro — non possono essere formati di
+  *destinazione* senza una libreria esterna (es. per SVG, che Android non sa nemmeno
+  decodificare).
+- **OCR** (immagine/PDF scannerizzato → testo ricercabile): fattibile con ML Kit di
+  Google offline, non incluso.
+- **Job lunghi in background**: le conversioni audio/video girano finché l'app resta
+  in foreground; su video molto lunghi converrebbe spostarle su `WorkManager` con
+  notifica persistente così sopravvivono anche se l'utente esce dall'app.
+- **Cronologia conversioni**, **strumenti PDF avanzati** (dividi, ruota, comprimi,
+  filigrana, password), **lettore integrato** per aprire i file convertiti senza
+  uscire dall'app: tutte cose valide, da valutare in un prossimo giro.
 - L'icona dell'app (`res/drawable/ic_launcher_*.xml`, `res/mipmap*/ic_launcher*`) è un
-  semplice placeholder vettoriale con due frecce; consigliato rigenerarla con l'Image
-  Asset Studio di Android Studio prima della pubblicazione.
+  semplice placeholder vettoriale; consigliato rigenerarla con l'Image Asset Studio
+  di Android Studio prima della pubblicazione.
 - Nessun test automatizzato incluso: dato che l'ambiente di sviluppo non può
-  eseguire l'emulatore Android, i flussi (selezione file, conversione, condivisione)
-  vanno verificati manualmente in Android Studio.
+  eseguire l'emulatore Android, i flussi vanno verificati manualmente in Android
+  Studio (come già fatto finora per le conversioni singole).

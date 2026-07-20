@@ -64,10 +64,14 @@ import com.megaconverter.app.converter.ConversionInput
 import com.megaconverter.app.converter.ConversionResult
 import com.megaconverter.app.converter.FileFormat
 import com.megaconverter.app.converter.converters.MultiImageToPdf
+import com.megaconverter.app.converter.converters.PdfMerge
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,7 +94,7 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
     ) { uris ->
         if (uris.isNotEmpty()) {
             progress = 0f
-            uiState = UiState.MultiImageConverting(uris.size)
+            uiState = UiState.BatchProcessing("UNIONE IN CORSO…", "${uris.size} immagini → un unico PDF")
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
                     try {
@@ -111,6 +115,45 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
                     is ConversionResult.Failure -> UiState.Error(result.message)
                 }
             }
+        }
+    }
+
+    val multiPdfPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.size >= 2) {
+            progress = 0f
+            uiState = UiState.BatchProcessing("UNIONE PDF IN CORSO…", "${uris.size} PDF → un unico PDF")
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    try {
+                        val files = uris.map { uri ->
+                            val name = FileUtils.displayNameFromUri(context, uri)
+                            FileUtils.copyToCache(context, uri, name)
+                        }
+                        val outputFile = PdfMerge.merge(context, files, "pdf_unito")
+                        ConversionResult.Success(outputFile, FileFormat.PDF)
+                    } catch (e: Exception) {
+                        ConversionResult.Failure(e.message ?: "Errore durante l'unione dei PDF")
+                    }
+                }
+                uiState = when (result) {
+                    is ConversionResult.Success -> UiState.Success(null, result.outputFile, result.format)
+                    is ConversionResult.Failure -> UiState.Error(result.message)
+                }
+            }
+        } else if (uris.isNotEmpty()) {
+            uiState = UiState.Error("Seleziona almeno 2 PDF da unire")
+        }
+    }
+
+    val batchPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.size >= 2) {
+            scope.launch { uiState = loadBatch(context, engine, uris) }
+        } else if (uris.isNotEmpty()) {
+            uiState = UiState.Error("Seleziona almeno 2 file dello stesso formato")
         }
     }
 
@@ -148,6 +191,52 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
         }
     }
 
+    fun startBatchConversion(inputs: List<ConversionInput>, target: FileFormat) {
+        progress = 0f
+        val label = "CONVERSIONE MULTIPLA IN CORSO…"
+        uiState = UiState.BatchProcessing(label, "0 / ${inputs.size} file → .${target.extension.uppercase()}")
+        scope.launch {
+            val outputFiles = mutableListOf<File>()
+            var failureMessage: String? = null
+            withContext(Dispatchers.IO) {
+                for ((index, input) in inputs.withIndex()) {
+                    mainHandler.post {
+                        progress = index / inputs.size.toFloat()
+                        uiState = UiState.BatchProcessing(
+                            label,
+                            "${index + 1} / ${inputs.size} file → .${target.extension.uppercase()}",
+                        )
+                    }
+                    when (val result = engine.convert(context, input, target)) {
+                        is ConversionResult.Success -> outputFiles.add(result.outputFile)
+                        is ConversionResult.Failure -> {
+                            failureMessage = "Conversione fallita su '${input.displayName}': ${result.message}"
+                        }
+                    }
+                    if (failureMessage != null) break
+                }
+            }
+            uiState = when {
+                failureMessage != null -> UiState.Error(failureMessage!!)
+                outputFiles.size == 1 -> UiState.Success(null, outputFiles.first(), target)
+                else -> {
+                    val zipFile = withContext(Dispatchers.IO) {
+                        val zip = FileUtils.newOutputFile(context, "conversioni_multiple", "zip")
+                        ZipOutputStream(zip.outputStream()).use { out ->
+                            outputFiles.forEach { file ->
+                                out.putNextEntry(ZipEntry(file.name))
+                                file.inputStream().use { it.copyTo(out) }
+                                out.closeEntry()
+                            }
+                        }
+                        zip
+                    }
+                    UiState.Success(null, zipFile, target)
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(title = { Text("MEGA CONVERTER") })
@@ -170,6 +259,8 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
                     is UiState.Idle -> IdleContent(
                         onPick = { pickFileLauncher.launch(arrayOf("*/*")) },
                         onPickMultiImages = { multiImagePickerLauncher.launch(arrayOf("image/*")) },
+                        onPickMultiPdf = { multiPdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                        onPickBatch = { batchPickerLauncher.launch(arrayOf("*/*")) },
                     )
                     is UiState.FileSelected -> FileSelectedContent(
                         state = state,
@@ -177,8 +268,14 @@ fun ConverterScreen(engine: ConversionEngine, initialUri: Uri?) {
                         onConvert = { startConversion(state.input, state.targetFormat) },
                         onPickAnother = { pickFileLauncher.launch(arrayOf("*/*")) },
                     )
+                    is UiState.BatchSelected -> BatchSelectedContent(
+                        state = state,
+                        onTargetChange = { target -> uiState = state.copy(targetFormat = target) },
+                        onConvert = { startBatchConversion(state.inputs, state.targetFormat) },
+                        onPickAnother = { batchPickerLauncher.launch(arrayOf("*/*")) },
+                    )
                     is UiState.Converting -> ConvertingContent(state = state, progress = progress)
-                    is UiState.MultiImageConverting -> MultiImageConvertingContent(state = state, progress = progress)
+                    is UiState.BatchProcessing -> BatchProcessingContent(state = state, progress = progress)
                     is UiState.Success -> SuccessContent(
                         state = state,
                         onOpen = { context.startActivity(FileUtils.openIntent(context, state.outputFile, FileUtils.guessMimeType(state.outputFile, state.outputFormat))) },
@@ -217,16 +314,51 @@ private suspend fun loadFile(context: Context, engine: ConversionEngine, uri: Ur
         }
     }
 
+private suspend fun loadBatch(context: Context, engine: ConversionEngine, uris: List<Uri>): UiState =
+    withContext(Dispatchers.IO) {
+        try {
+            val names = uris.map { FileUtils.displayNameFromUri(context, it) }
+            val formats = uris.mapIndexed { i, uri -> FileUtils.detectFormat(context, uri, names[i]) }
+            if (formats.any { it == null }) {
+                return@withContext UiState.Error("Formato non riconosciuto per uno dei file selezionati")
+            }
+            val distinctFormats = formats.filterNotNull().distinct()
+            if (distinctFormats.size > 1) {
+                return@withContext UiState.Error(
+                    "Per la conversione multipla scegli file dello stesso formato " +
+                        "(trovati: ${distinctFormats.joinToString { it.extension.uppercase() }})",
+                )
+            }
+            val format = distinctFormats.first()
+            val targets = engine.supportedTargets(format)
+            if (targets.isEmpty()) {
+                return@withContext UiState.Error("Nessuna conversione disponibile al momento per .${format.extension}")
+            }
+            val inputs = uris.mapIndexed { i, uri ->
+                val file = FileUtils.copyToCache(context, uri, names[i])
+                ConversionInput(file, names[i], format)
+            }
+            UiState.BatchSelected(inputs, targets.first(), targets)
+        } catch (e: Exception) {
+            UiState.Error(e.message ?: "Errore durante la selezione dei file")
+        }
+    }
+
 @Composable
-private fun IdleContent(onPick: () -> Unit, onPickMultiImages: () -> Unit) {
-    Spacer(Modifier.height(48.dp))
+private fun IdleContent(
+    onPick: () -> Unit,
+    onPickMultiImages: () -> Unit,
+    onPickMultiPdf: () -> Unit,
+    onPickBatch: () -> Unit,
+) {
+    Spacer(Modifier.height(40.dp))
     Icon(
         imageVector = Icons.Filled.UploadFile,
         contentDescription = null,
-        modifier = Modifier.size(96.dp),
+        modifier = Modifier.size(88.dp),
         tint = MaterialTheme.colorScheme.primary,
     )
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(20.dp))
     Text(
         "CONVERTI QUALSIASI FILE",
         style = MaterialTheme.typography.headlineSmall,
@@ -235,21 +367,39 @@ private fun IdleContent(onPick: () -> Unit, onPickMultiImages: () -> Unit) {
     DotRow()
     Spacer(Modifier.height(12.dp))
     Text(
-        "Immagini, documenti, audio e video: scegli un file e scegli in cosa trasformarlo.",
+        "Immagini, documenti, ebook, audio e video: scegli un file e scegli in cosa trasformarlo.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(32.dp))
-    Button(onClick = onPick) {
+    Spacer(Modifier.height(28.dp))
+    Button(onClick = onPick, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Filled.FileOpen, contentDescription = null)
         Spacer(Modifier.width(8.dp))
         Text("SCEGLI FILE")
     }
-    Spacer(Modifier.height(12.dp))
-    OutlinedButton(onClick = onPickMultiImages) {
+    Spacer(Modifier.height(28.dp))
+    Text(
+        "STRUMENTI",
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(onClick = onPickMultiImages, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Filled.PhotoLibrary, contentDescription = null)
         Spacer(Modifier.width(8.dp))
         Text("UNISCI PIÙ IMMAGINI IN UN PDF")
+    }
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(onClick = onPickMultiPdf, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Filled.FileOpen, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text("UNISCI PIÙ PDF IN UNO")
+    }
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(onClick = onPickBatch, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Filled.SwapHoriz, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text("CONVERTI PIÙ FILE INSIEME")
     }
 }
 
@@ -318,6 +468,69 @@ private fun FileSelectedContent(
     TextButton(onClick = onPickAnother) { Text("SCEGLI UN ALTRO FILE") }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BatchSelectedContent(
+    state: UiState.BatchSelected,
+    onTargetChange: (FileFormat) -> Unit,
+    onConvert: () -> Unit,
+    onPickAnother: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Text("FILE SELEZIONATI", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${state.inputs.size} file · .${state.inputs.first().format.extension.uppercase()}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Spacer(Modifier.height(20.dp))
+            Text("CONVERTI TUTTI IN", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                OutlinedTextField(
+                    value = ".${state.targetFormat.extension.uppercase()}",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Formato di destinazione") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                )
+                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    state.availableTargets.groupBy { it.category.label }.forEach { (categoryLabel, formats) ->
+                        formats.forEach { format ->
+                            DropdownMenuItem(
+                                text = { Text(".${format.extension.uppercase()} · $categoryLabel") },
+                                onClick = {
+                                    onTargetChange(format)
+                                    expanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
+    Button(onClick = onConvert, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Filled.SwapHoriz, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text("CONVERTI ${state.inputs.size} FILE IN .${state.targetFormat.extension.uppercase()}")
+    }
+    Spacer(Modifier.height(12.dp))
+    TextButton(onClick = onPickAnother) { Text("SCEGLI ALTRI FILE") }
+}
+
 @Composable
 private fun ConvertingContent(state: UiState.Converting, progress: Float) {
     Spacer(Modifier.height(64.dp))
@@ -344,7 +557,7 @@ private fun ConvertingContent(state: UiState.Converting, progress: Float) {
 }
 
 @Composable
-private fun MultiImageConvertingContent(state: UiState.MultiImageConverting, progress: Float) {
+private fun BatchProcessingContent(state: UiState.BatchProcessing, progress: Float) {
     Spacer(Modifier.height(64.dp))
     if (progress > 0f) {
         CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(72.dp))
@@ -352,10 +565,10 @@ private fun MultiImageConvertingContent(state: UiState.MultiImageConverting, pro
         CircularProgressIndicator(modifier = Modifier.size(72.dp))
     }
     Spacer(Modifier.height(24.dp))
-    Text("UNIONE IN CORSO…", style = MaterialTheme.typography.titleMedium)
+    Text(state.label, style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(4.dp))
     Text(
-        "${state.totalCount} immagini → un unico PDF",
+        state.detail,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

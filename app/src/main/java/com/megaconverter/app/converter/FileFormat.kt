@@ -26,6 +26,7 @@ enum class FileFormat(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         FormatCategory.DOCUMENT,
     ),
+    EPUB("epub", "application/epub+zip", FormatCategory.DOCUMENT),
 
     // Audio
     MP3("mp3", "audio/mpeg", FormatCategory.AUDIO),
