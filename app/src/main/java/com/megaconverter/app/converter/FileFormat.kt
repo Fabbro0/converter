@@ -37,6 +37,11 @@ enum class FileFormat(
     MD("md", "text/markdown", FormatCategory.DOCUMENT),
     HTML("html", "text/html", FormatCategory.DOCUMENT),
     RTF("rtf", "application/rtf", FormatCategory.DOCUMENT),
+    PPTX(
+        "pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        FormatCategory.DOCUMENT,
+    ),
 
     // Spreadsheets
     CSV("csv", "text/csv", FormatCategory.SPREADSHEET),

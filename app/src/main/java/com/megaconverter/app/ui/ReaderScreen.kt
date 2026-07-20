@@ -5,13 +5,16 @@ import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -43,7 +46,12 @@ import com.megaconverter.app.converter.FormatCategory
 import com.megaconverter.app.converter.converters.CBZ_IMAGE_EXTENSIONS
 import com.megaconverter.app.converter.converters.DocxReader
 import com.megaconverter.app.converter.converters.EpubReader
+import com.megaconverter.app.converter.converters.HtmlStripper
+import com.megaconverter.app.converter.converters.MarkdownStripper
 import com.megaconverter.app.converter.converters.NaturalSort
+import com.megaconverter.app.converter.converters.PptxReader
+import com.megaconverter.app.converter.converters.RtfStripper
+import com.megaconverter.app.converter.converters.XlsxReader
 import com.megaconverter.app.util.FileUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,6 +77,17 @@ fun ReaderScreen(file: File, format: FileFormat, displayName: String, onBack: ()
                 format == FileFormat.TXT -> TextFileReaderContent(file)
                 format == FileFormat.DOCX -> ExtractedTextReaderContent(file, DocxReader::extractText)
                 format == FileFormat.EPUB -> ExtractedTextReaderContent(file, EpubReader::extractText)
+                format == FileFormat.PPTX -> ExtractedTextReaderContent(file, PptxReader::extractText)
+                format == FileFormat.MD -> ExtractedTextReaderContent(file) {
+                    MarkdownStripper.toPlainText(it.readText(Charsets.UTF_8))
+                }
+                format == FileFormat.HTML -> ExtractedTextReaderContent(file) {
+                    HtmlStripper.toPlainText(it.readText(Charsets.UTF_8))
+                }
+                format == FileFormat.RTF -> ExtractedTextReaderContent(file) {
+                    RtfStripper.toPlainText(it.readText(Charsets.UTF_8))
+                }
+                format == FileFormat.XLSX -> XlsxReaderContent(file)
                 else -> UnsupportedReaderContent(file, format)
             }
         }
@@ -294,6 +313,59 @@ private fun ImageReaderContent(file: File) {
             )
         } else {
             CircularProgressIndicator()
+        }
+    }
+}
+
+@Composable
+private fun XlsxReaderContent(file: File) {
+    var rows by remember(file) { mutableStateOf<List<List<String>>?>(null) }
+    var loadError by remember(file) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file) {
+        try {
+            rows = withContext(Dispatchers.IO) { XlsxReader.readRows(file) }
+        } catch (e: Exception) {
+            loadError = e.message ?: "XLSX non leggibile"
+        }
+    }
+
+    val error = loadError
+    if (error != null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(24.dp))
+        }
+        return
+    }
+    val data = rows
+    if (data == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    if (data.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Il foglio è vuoto", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .horizontalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+    ) {
+        Column {
+            data.forEach { row ->
+                Row {
+                    row.forEach { cell ->
+                        Box(modifier = Modifier.width(130.dp).padding(6.dp)) {
+                            Text(cell, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -9,6 +9,7 @@ import com.megaconverter.app.converter.converters.HtmlConverter
 import com.megaconverter.app.converter.converters.ImagePdfConverter
 import com.megaconverter.app.converter.converters.ImageToImageConverter
 import com.megaconverter.app.converter.converters.MarkdownConverter
+import com.megaconverter.app.converter.converters.PptxConverter
 import com.megaconverter.app.converter.converters.RtfConverter
 import com.megaconverter.app.converter.converters.SpreadsheetConverter
 import com.megaconverter.app.converter.converters.TextPdfConverter
@@ -54,6 +55,7 @@ class ConversionEngine(private val converters: List<FileConverter>) {
                 MarkdownConverter(),
                 HtmlConverter(),
                 RtfConverter(),
+                PptxConverter(),
                 SpreadsheetConverter(),
                 AudioVideoConverter(),
             ),
