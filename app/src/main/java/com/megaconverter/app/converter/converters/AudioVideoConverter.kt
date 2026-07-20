@@ -64,7 +64,7 @@ class AudioVideoConverter : FileConverter {
                 { /* ignore raw ffmpeg logs */ },
                 { statistics ->
                     if (durationMs > 0) {
-                        val progress = (statistics.time / durationMs.toFloat()).coerceIn(0f, 0.99f)
+                        val progress = (statistics.time.toFloat() / durationMs.toFloat()).coerceIn(0f, 0.99f)
                         onProgress(progress)
                     }
                 },
